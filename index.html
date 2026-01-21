@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Gestão de Pasto v2.4</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+body{margin:0;padding:0;font-family:system-ui,-apple-system,sans-serif;touch-action:pan-y;overflow-x:hidden}
+.gps-pulse{animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(1.1)}}
+.map-container{touch-action:none;-webkit-user-select:none;user-select:none;cursor:grab}
+.map-container:active{cursor:grabbing}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useMemo,useCallback,useRef}=React;
+const I=({size=20,children})=><svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">{children}</svg>;
+const Upload=p=><I {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></I>;
+const Plus=p=><I {...p}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></I>;
+const Trash2=p=><I {...p}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></I>;
+const X=p=><I {...p}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></I>;
+const MapPin=p=><I {...p}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></I>;
+const ZoomIn=p=><I {...p}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></I>;
+const ZoomOut=p=><I {...p}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></I>;
+const RotateCcw=p=><I {...p}><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></I>;
+const Download=p=><I {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></I>;
+const Edit2=p=><I {...p}><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></I>;
+const Search=p=><I {...p}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></I>;
+const Target=p=><I {...p}><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></I>;
+const Navigation=p=><I {...p}><polygon points="3 11 22 2 13 21 11 13 3 11"/></I>;
+const Loader=p=><I {...p}><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></I>;
+const AlertCircle=p=><I {...p}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></I>;
+
+const gid=()=>`${Date.now()}-${Math.random().toString(36).substr(2,9)}`;
+const calcArea=c=>{if(!c||c.length<3)return 0;let a=0;const n=c.length,lm=c.reduce((s,v)=>s+v[1],0)/n,fl=Math.cos(lm*Math.PI/180);for(let i=0;i<n;i++){const j=(i+1)%n,xi=c[i][0]*fl*111320,yi=c[i][1]*110540,xj=c[j][0]*fl*111320,yj=c[j][1]*110540;a+=xi*yj-xj*yi}return(Math.abs(a)/2/10000).toFixed(2)};
+const calcUA=(p,q)=>!p||!q?0:((p*q)/450).toFixed(2);
+const vFaz=d=>{const e=[];if(!d.nome?.trim())e.push('Nome obrigatório');return e};
+const vLot=d=>{const e=[];if(!d.nome?.trim())e.push('Nome obrigatório');if(!d.categoria)e.push('Categoria obrigatória');const p=parseFloat(d.pesoMedio),q=parseInt(d.quantidade);if(isNaN(p)||p<=0)e.push('Peso inválido');if(isNaN(q)||q<=0)e.push('Qtd inválida');return e};
+
+const isReserva=nome=>{const n=nome.toLowerCase();return n.includes('reserva')||n.includes('preserva')||n.includes('app')||n.includes('rl ')||n.includes('mata')||n.includes('floresta')};
+
+const loteCores=['#fbbf24','#3b82f6','#10b981','#f97316','#8b5cf6','#ec4899','#ef4444','#06b6d4','#84cc16','#a855f7'];
+const moduloCores=['rgba(16,185,129,0.15)','rgba(139,92,246,0.15)','rgba(249,115,22,0.15)','rgba(59,130,246,0.15)','rgba(236,72,153,0.15)'];
+const moduloCoresFortes=['rgba(16,185,129,0.5)','rgba(139,92,246,0.5)','rgba(249,115,22,0.5)','rgba(59,130,246,0.5)','rgba(236,72,153,0.5)'];
+const getLoteCor=(idx)=>loteCores[idx%loteCores.length];
+const getModuloCor=(idx)=>moduloCores[idx%moduloCores.length];
+const getModuloCorForte=(idx)=>moduloCoresFortes[idx%moduloCoresFortes.length];
+
+const pointInPolygon=(p,vs)=>{let inside=false;for(let i=0,j=vs.length-1;i<vs.length;j=i++){const xi=vs[i][0],yi=vs[i][1],xj=vs[j][0],yj=vs[j][1];if((yi>p[1])!=(yj>p[1])&&(p[0]<(xj-xi)*(p[1]-yi)/(yj-yi)+xi))inside=!inside}return inside};
+
+function App(){
+const[faz,setFaz]=useState([]);
+const[fa,setFa]=useState(null);
+const[mod,setMod]=useState([]);
+const[piq,setPiq]=useState([]);
+const[lot,setLot]=useState([]);
+const[his,setHis]=useState([]);
+const[tab,setTab]=useState('mapa');
+const[modal,setModal]=useState(null);
+const[sel,setSel]=useState(null);
+const[mb,setMb]=useState(null);
+const[st,setSt]=useState('');
+const[sch,setSch]=useState('');
+const[ed,setEd]=useState(null);
+const[zm,setZm]=useState(1);
+const[pn,setPn]=useState({x:0,y:0});
+const[fd,setFd]=useState({});
+const[fe,setFe]=useState([]);
+const[gps,setGps]=useState(null);
+const[gpsStatus,setGpsStatus]=useState('buscando');
+const[gpsErr,setGpsErr]=useState('');
+const[gpsDebug,setGpsDebug]=useState({});
+const svgRef=useRef(null);
+const[touchState,setTouchState]=useState({type:null,start:{x:0,y:0},dist:0});
+
+const cat=['Bezerro','Bezerra','Garrotes','Novilhas','Bois','Vacas'];
+
+useEffect(()=>{const s=localStorage.getItem('pastureSystem');if(s){try{const d=JSON.parse(s);setFaz(d.fazendas||[]);setMod(d.modulos||[]);setPiq(d.piquetes||[]);setLot(d.lotes||[]);setFa(d.fazendaAtual||null);setHis(d.historico||[]);if(d.mapBounds)setMb(d.mapBounds)}catch(e){}}},[]);
+useEffect(()=>{const d={version:'2.4',fazendas:faz,modulos:mod,piquetes:piq,lotes:lot,fazendaAtual:fa,historico:his,mapBounds:mb};localStorage.setItem('pastureSystem',JSON.stringify(d))},[faz,mod,piq,lot,fa,his,mb]);
+
+useEffect(()=>{setGpsDebug({hasAPI:!!navigator.geolocation,protocol:window.location.protocol,timestamp:new Date().toISOString()});if(!navigator.geolocation){setGpsStatus('indisponivel');setGpsDebug(d=>({...d,error:'API não disponível'}));return}const id=navigator.geolocation.watchPosition(pos=>{setGps({lat:pos.coords.latitude,lng:pos.coords.longitude,acc:pos.coords.accuracy});setGpsStatus('ativo');setGpsErr('');setGpsDebug(d=>({...d,lastSuccess:new Date().toISOString(),coords:`${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`,accuracy:`${pos.coords.accuracy.toFixed(0)}m`}))},err=>{setGpsStatus('erro');setGpsErr(err.message);setGpsDebug(d=>({...d,lastError:err.message,errorCode:err.code,timestamp:new Date().toISOString()}))},{enableHighAccuracy:true,timeout:30000,maximumAge:0});return()=>{if(id)navigator.geolocation.clearWatch(id)}},[]);
+
+const testGPS=useCallback(()=>{if(!navigator.geolocation){alert('GPS não disponível');return}setGpsStatus('buscando');navigator.geolocation.getCurrentPosition(pos=>{setGps({lat:pos.coords.latitude,lng:pos.coords.longitude,acc:pos.coords.accuracy});setGpsStatus('ativo');alert(`✅ GPS OK!\nLat: ${pos.coords.latitude.toFixed(6)}\nLng: ${pos.coords.longitude.toFixed(6)}\nPrecisão: ${pos.coords.accuracy.toFixed(0)}m`)},err=>{setGpsStatus('erro');setGpsErr(err.message);alert(`❌ Erro GPS:\n${err.message}\n\nCódigo: ${err.code}\n\n1=PERMISSION_DENIED\n2=POSITION_UNAVAILABLE\n3=TIMEOUT`)},{enableHighAccuracy:true,timeout:30000,maximumAge:0})},[]);
+
+const exp=useCallback(()=>{const d={fazendas:faz,modulos:mod,piquetes:piq,lotes:lot,historico:his,version:'2.4',dataExportacao:new Date().toISOString()};const b=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`pastagem-backup-${Date.now()}.json`;a.click();URL.revokeObjectURL(u);setSt('✅ Backup!');setTimeout(()=>setSt(''),3000)},[faz,mod,piq,lot,his]);
+
+const imp=useCallback(e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(!d.version)throw new Error('Inválido');if(confirm('Importar?')){setFaz(d.fazendas||[]);setMod(d.modulos||[]);setPiq(d.piquetes||[]);setLot(d.lotes||[]);setHis(d.historico||[]);setFa(null);setSt('✅ Importado!')}}catch(er){setSt('❌ Erro:'+er.message)}};r.readAsText(f);e.target.value=''},[]);
+
+const getLI=useCallback(p=>{if(!p.loteAtualId)return 0;const l=lot.find(x=>x.id===p.loteAtualId);if(!l||!p.area)return 0;return(l.totalUA/parseFloat(p.area)).toFixed(2)},[lot]);
+
+const getSt=useCallback(p=>{if(p.loteAtualId){const d=p.dataEntrada?Math.floor((new Date()-new Date(p.dataEntrada))/86400000):0;return{status:'ocupado',dias:d,loteId:p.loteAtualId}}const d=p.dataSaida?Math.floor((new Date()-new Date(p.dataSaida))/86400000):0;return{status:'vazio',dias:d}},[]);
+
+const parseKML=useCallback(t=>{const p=new DOMParser(),x=p.parseFromString(t,'text/xml');if(x.querySelector('parsererror'))throw new Error('KML malformado');const pl=x.getElementsByTagName('Placemark');if(pl.length===0)throw new Error('Nenhum placemark');if(pl.length>500)throw new Error('Máx 500');const np=[];let minLat=Infinity,maxLat=-Infinity,minLng=Infinity,maxLng=-Infinity,areaTotal=0,areaReserva=0,numReservas=0;for(let i=0;i<pl.length;i++){const pm=pl[i],ne=pm.getElementsByTagName('name')[0],nm=ne?ne.textContent.trim():`Piquete ${i+1}`,ce=pm.getElementsByTagName('coordinates')[0];let co=[],ar=0;const reserva=isReserva(nm);if(ce){const ct=ce.textContent.trim(),cp=ct.split(/\s+/);co=cp.map(pr=>{const[lng,lat]=pr.split(',').map(parseFloat);if(!isNaN(lng)&&!isNaN(lat)){if(lat<-90||lat>90||lng<-180||lng>180)throw new Error('Coord inválida');minLng=Math.min(minLng,lng);maxLng=Math.max(maxLng,lng);minLat=Math.min(minLat,lat);maxLat=Math.max(maxLat,lat);return[lng,lat]}return null}).filter(c=>c!==null);if(co.length>2){ar=parseFloat(calcArea(co));areaTotal+=ar;if(reserva){areaReserva+=ar;numReservas++}}}np.push({id:gid(),fazendaId:fa,moduloId:null,nome:nm,area:ar,forrageira:'',coordinates:co,loteAtualId:null,dataEntrada:null,dataSaida:null,ehReserva:reserva,dataCriacao:new Date().toISOString()})}setMb({minLat,maxLat,minLng,maxLng,centerLat:(minLat+maxLat)/2,centerLng:(minLng+maxLng)/2,width:maxLng-minLng,height:maxLat-minLat});if(fa){setFaz(faz.map(f=>f.id===fa?{...f,areaTotal:areaTotal.toFixed(2),areaPreservacao:areaReserva.toFixed(2),areaUtil:(areaTotal-areaReserva).toFixed(2)}:f))}return{piquetes:np,stats:{total:areaTotal.toFixed(2),reserva:areaReserva.toFixed(2),util:(areaTotal-areaReserva).toFixed(2),numPiquetes:np.length,numReservas}}},[fa,faz]);
+
+const hKML=useCallback(e=>{const f=e.target.files[0];if(!f)return;if(!fa){setSt('❌ Selecione fazenda');return}if(f.size>5242880){setSt('❌ Máx 5MB');return}setSt('⏳ Processando...');const r=new FileReader();r.onload=ev=>{try{const res=parseKML(ev.target.result);setPiq([...piq,...res.piquetes]);setHis([...his,{id:gid(),tipo:'importacao_kml',quantidade:res.stats.numPiquetes,fazendaId:fa,data:new Date().toISOString()}]);setSt(`✅ ${res.stats.numPiquetes} piquetes!\n📊 Total: ${res.stats.total}ha\n🌳 Reservas: ${res.stats.reserva}ha (${res.stats.numReservas})\n🌾 Útil: ${res.stats.util}ha`);setTimeout(()=>setSt(''),5000)}catch(er){setSt(`❌ ${er.message}`)}};r.readAsText(f);e.target.value=''},[fa,piq,his,parseKML]);
+
+const projC=(lng,lat,b,w,h)=>{if(!b)return[0,0];const p=50;return[((lng-b.minLng)/b.width)*(w-p*2)+p,((b.maxLat-lat)/b.height)*(h-p*2)+p]};
+const getPath=(c,b,w,h)=>{if(!c||c.length===0)return'';const pts=c.map(co=>projC(co[0],co[1],b,w,h));return pts.map((p,i)=>`${i===0?'M':'L'} ${p[0]} ${p[1]}`).join(' ')+' Z'};
+const getCent=c=>{if(!c||c.length===0)return[0,0];let sLng=0,sLat=0;c.forEach(co=>{sLng+=co[0];sLat+=co[1]});return[sLng/c.length,sLat/c.length]};
+
+const crFaz=useCallback(()=>{const e=vFaz(fd);if(e.length>0){setFe(e);return}const nv={id:gid(),nome:fd.nome,proprietario:fd.proprietario||'',areaTotal:0,areaPreservacao:0,areaUtil:0,dataCriacao:new Date().toISOString()};setFaz([...faz,nv]);setFa(nv.id);setModal(null);setFd({});setFe([]);setTab('mapa')},[fd,faz]);
+
+const edFaz=useCallback(()=>{const e=vFaz(fd);if(e.length>0){setFe(e);return}const at={...ed,nome:fd.nome,proprietario:fd.proprietario||''};setFaz(faz.map(f=>f.id===ed.id?at:f));setModal(null);setEd(null);setFd({});setFe([])},[fd,ed,faz]);
+
+const delFaz=useCallback(id=>{const f=faz.find(x=>x.id===id);if(!confirm(`Excluir "${f.nome}"?`))return;setFaz(faz.filter(x=>x.id!==id));setPiq(piq.filter(p=>p.fazendaId!==id));setLot(lot.filter(l=>l.fazendaId!==id));setMod(mod.filter(m=>m.fazendaId!==id));if(fa===id)setFa(null)},[faz,piq,lot,mod,fa]);
+
+const edPiq=useCallback(()=>{if(!fd.nome?.trim()){setFe(['Nome obrigatório']);return}const at={...ed,nome:fd.nome,ehReserva:fd.ehReserva};setPiq(piq.map(p=>p.id===ed.id?at:p));const fazAtual=faz.find(f=>f.id===fa);if(fazAtual){const pF=piq.filter(p=>p.fazendaId===fa).map(p=>p.id===ed.id?at:p);const aT=pF.reduce((s,p)=>s+parseFloat(p.area||0),0);const aR=pF.filter(p=>p.ehReserva).reduce((s,p)=>s+parseFloat(p.area||0),0);setFaz(faz.map(f=>f.id===fa?{...f,areaTotal:aT.toFixed(2),areaPreservacao:aR.toFixed(2),areaUtil:(aT-aR).toFixed(2)}:f))}setModal(null);setEd(null);setFd({});setFe([])},[fd,ed,piq,faz,fa]);
+
+const delPiq=useCallback(id=>{const p=piq.find(x=>x.id===id);if(p.loteAtualId){alert('Retire o lote antes');return}if(!confirm(`Excluir "${p.nome}"?`))return;setPiq(piq.filter(x=>x.id!==id));setMod(mod.map(m=>m.piquetesIds.includes(id)?{...m,piquetesIds:m.piquetesIds.filter(pid=>pid!==id)}:m));const pF=piq.filter(px=>px.fazendaId===fa&&px.id!==id);const aT=pF.reduce((s,px)=>s+parseFloat(px.area||0),0);const aR=pF.filter(px=>px.ehReserva).reduce((s,px)=>s+parseFloat(px.area||0),0);setFaz(faz.map(f=>f.id===fa?{...f,areaTotal:aT.toFixed(2),areaPreservacao:aR.toFixed(2),areaUtil:(aT-aR).toFixed(2)}:f))},[piq,mod,faz,fa]);
+
+const crMod=useCallback(()=>{if(!fd.nome||!fd.piquetesSelecionados||fd.piquetesSelecionados.length<2){setFe(['Selecione 2+ piquetes']);return}const nv={id:gid(),fazendaId:fa,nome:fd.nome,piquetesIds:fd.piquetesSelecionados,dataCriacao:new Date().toISOString()};setMod([...mod,nv]);setPiq(piq.map(p=>fd.piquetesSelecionados.includes(p.id)?{...p,moduloId:nv.id}:p));setModal(null);setFd({});setFe([])},[fd,mod,piq,fa]);
+
+const edMod=useCallback(()=>{if(!fd.nome||!fd.piquetesSelecionados||fd.piquetesSelecionados.length<2){setFe(['Selecione 2+ piquetes']);return}const at={...ed,nome:fd.nome,piquetesIds:fd.piquetesSelecionados};setMod(mod.map(m=>m.id===ed.id?at:m));setPiq(piq.map(p=>{if(fd.piquetesSelecionados.includes(p.id))return{...p,moduloId:ed.id};if(p.moduloId===ed.id)return{...p,moduloId:null};return p}));setModal(null);setEd(null);setFd({});setFe([])},[fd,ed,mod,piq]);
+
+const delMod=useCallback(id=>{if(!confirm('Excluir módulo?'))return;const m=mod.find(x=>x.id===id);setPiq(piq.map(p=>m.piquetesIds.includes(p.id)?{...p,moduloId:null}:p));setMod(mod.filter(x=>x.id!==id))},[mod,piq]);
+
+const crLot=useCallback(()=>{const e=vLot(fd);if(e.length>0){setFe(e);return}const tu=calcUA(parseFloat(fd.pesoMedio),parseInt(fd.quantidade));const nv={id:gid(),fazendaId:fa,nome:fd.nome,categoria:fd.categoria,pesoMedio:parseFloat(fd.pesoMedio),quantidade:parseInt(fd.quantidade),totalUA:parseFloat(tu),status:'livre',piqueteAtual:null,dataCriacao:new Date().toISOString()};setLot([...lot,nv]);if(fd.piqueteInicial){const p=piq.find(x=>x.id===fd.piqueteInicial);if(p.ehReserva){alert('❌ Não pode alocar em reserva!');return}setPiq(piq.map(x=>x.id===fd.piqueteInicial?{...x,loteAtualId:nv.id,dataEntrada:new Date().toISOString()}:x));setLot([...lot,{...nv,status:'alocado',piqueteAtual:fd.piqueteInicial}]);setHis([...his,{id:gid(),tipo:'alocacao',loteId:nv.id,loteName:nv.nome,piqueteId:fd.piqueteInicial,piqueteName:p.nome,fazendaId:fa,data:new Date().toISOString()}])}setModal(null);setFd({});setFe([])},[fd,lot,piq,his,fa]);
+
+const edLot=useCallback(()=>{const e=vLot(fd);if(e.length>0){setFe(e);return}const tu=calcUA(parseFloat(fd.pesoMedio),parseInt(fd.quantidade));const at={...ed,nome:fd.nome,categoria:fd.categoria,pesoMedio:parseFloat(fd.pesoMedio),quantidade:parseInt(fd.quantidade),totalUA:parseFloat(tu)};setLot(lot.map(l=>l.id===ed.id?at:l));setModal(null);setEd(null);setFd({});setFe([])},[fd,ed,lot]);
+
+const delLot=useCallback(id=>{const l=lot.find(x=>x.id===id);if(l.status==='alocado'){alert('Retire antes');return}if(!confirm(`Excluir "${l.nome}"?`))return;setLot(lot.filter(x=>x.id!==id))},[lot]);
+
+const aloc=useCallback((pid,lid)=>{const p=piq.find(x=>x.id===pid);if(p.ehReserva){alert('❌ Não pode alocar em reserva!');return}const l=lot.find(x=>x.id===lid);setPiq(piq.map(x=>x.id===pid?{...x,loteAtualId:lid,dataEntrada:new Date().toISOString(),dataSaida:null}:x));setLot(lot.map(x=>x.id===lid?{...x,status:'alocado',piqueteAtual:pid}:x));setHis([...his,{id:gid(),tipo:'alocacao',loteId:lid,loteName:l.nome,piqueteId:pid,piqueteName:p.nome,fazendaId:fa,data:new Date().toISOString()}]);setSel(null);setModal(null)},[piq,lot,fa,his]);
+
+const transf=useCallback((pidOrig,pidDest)=>{const pD=piq.find(x=>x.id===pidDest);if(pD.ehReserva){alert('❌ Não pode transferir para reserva!');return}const pO=piq.find(x=>x.id===pidOrig),l=lot.find(x=>x.id===pO.loteAtualId);setPiq(piq.map(x=>{if(x.id===pidOrig)return{...x,loteAtualId:null,dataSaida:new Date().toISOString()};if(x.id===pidDest)return{...x,loteAtualId:pO.loteAtualId,dataEntrada:new Date().toISOString()};return x}));setLot(lot.map(x=>x.id===pO.loteAtualId?{...x,piqueteAtual:pidDest}:x));setHis([...his,{id:gid(),tipo:'transferencia',loteId:pO.loteAtualId,loteName:l.nome,piqueteOrigemId:pidOrig,piqueteOrigemName:pO.nome,piqueteDestinoId:pidDest,piqueteDestinoName:pD.nome,fazendaId:fa,data:new Date().toISOString()}]);setSel(null);setModal(null)},[piq,lot,fa,his]);
+
+const vender=useCallback(pid=>{const p=piq.find(x=>x.id===pid),l=lot.find(x=>x.id===p.loteAtualId);if(!confirm(`Vender lote "${l.nome}"?`))return;setPiq(piq.map(x=>x.id===pid?{...x,loteAtualId:null,dataSaida:new Date().toISOString()}:x));setLot(lot.map(x=>x.id===p.loteAtualId?{...x,status:'vendido',piqueteAtual:null}:x));setHis([...his,{id:gid(),tipo:'venda',loteId:p.loteAtualId,loteName:l.nome,piqueteId:pid,piqueteName:p.nome,fazendaId:fa,data:new Date().toISOString()}]);setSel(null)},[piq,lot,fa,his]);
+
+const retir=useCallback(pid=>{const p=piq.find(x=>x.id===pid),l=lot.find(x=>x.id===p.loteAtualId);setPiq(piq.map(x=>x.id===pid?{...x,loteAtualId:null,dataSaida:new Date().toISOString()}:x));if(p.loteAtualId){setLot(lot.map(x=>x.id===p.loteAtualId?{...x,status:'livre',piqueteAtual:null}:x));setHis([...his,{id:gid(),tipo:'retirada',loteId:p.loteAtualId,loteName:l?.nome,piqueteId:pid,piqueteName:p.nome,fazendaId:fa,data:new Date().toISOString()}])}setSel(null)},[piq,lot,fa,his]);
+
+const centerGPS=useCallback(()=>{if(!gps||!mb){if(gpsStatus==='buscando')alert('⏳ Aguardando GPS...');else if(gpsStatus==='erro')alert('❌ GPS sem sinal. Verifique permissões nas configurações do navegador.');else if(gpsStatus==='indisponivel')alert('❌ GPS indisponível neste dispositivo');return}const w=1000,h=800;const[x,y]=projC(gps.lng,gps.lat,mb,w,h);setPn({x:500-x*zm,y:400-y*zm})},[gps,mb,zm,gpsStatus]);
+
+const getPiqGPS=useMemo(()=>{if(!gps)return null;const p=piq.find(x=>x.fazendaId===fa&&x.coordinates&&x.coordinates.length>0&&pointInPolygon([gps.lng,gps.lat],x.coordinates));return p||null},[gps,piq,fa]);
+
+const handleTouchStart=e=>{if(e.touches.length===1){const t=e.touches[0];setTouchState({type:'pan',start:{x:t.clientX-pn.x,y:t.clientY-pn.y},dist:0})}else if(e.touches.length===2){const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);setTouchState({type:'pinch',start:{x:0,y:0},dist:d})}};
+
+const handleTouchMove=e=>{if(touchState.type==='pan'&&e.touches.length===1){e.preventDefault();const t=e.touches[0];setPn({x:t.clientX-touchState.start.x,y:t.clientY-touchState.start.y})}else if(touchState.type==='pinch'&&e.touches.length===2){e.preventDefault();const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);const scale=d/touchState.dist;setZm(z=>Math.max(0.5,Math.min(5,z*scale)));setTouchState(s=>({...s,dist:d}))}};
+
+const handleTouchEnd=()=>{setTouchState({type:null,start:{x:0,y:0},dist:0})};
+
+const fazAt=useMemo(()=>faz.find(f=>f.id===fa),[faz,fa]);
+const piqF=useMemo(()=>piq.filter(p=>p.fazendaId===fa),[piq,fa]);
+const modF=useMemo(()=>mod.filter(m=>m.fazendaId===fa),[mod,fa]);
+const lotF=useMemo(()=>lot.filter(l=>l.fazendaId===fa),[lot,fa]);
+const piqFil=useMemo(()=>!sch?piqF:piqF.filter(p=>p.nome.toLowerCase().includes(sch.toLowerCase())),[piqF,sch]);
+const lotFil=useMemo(()=>!sch?lotF.filter(l=>l.status!=='vendido'):lotF.filter(l=>l.status!=='vendido'&&(l.nome.toLowerCase().includes(sch.toLowerCase())||l.categoria.toLowerCase().includes(sch.toLowerCase()))),[lotF,sch]);
+
+const gpsStatusBadge=useMemo(()=>{switch(gpsStatus){case 'buscando':return<span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs flex items-center gap-1"><Loader size={12} className="animate-spin"/>Buscando GPS</span>;case 'ativo':return getPiqGPS?<span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs flex items-center gap-1">✅ GPS | 🎯 {getPiqGPS.nome}</span>:<span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs">✅ GPS Ativo</span>;case 'erro':return<span className="bg-red-100 text-red-800 px-2 py-1 rounded text-xs">❌ GPS Erro</span>;case 'indisponivel':return<span className="bg-gray-100 text-gray-800 px-2 py-1 rounded text-xs">⚠️ GPS N/D</span>;default:return null}},[gpsStatus,getPiqGPS]);
+
+return <div className="min-h-screen bg-gray-50">
+<div className="bg-gradient-to-r from-green-600 to-blue-600 text-white p-4 shadow-lg">
+<div className="max-w-7xl mx-auto">
+<div className="flex items-center justify-between mb-2">
+<h1 className="text-2xl font-bold">🌾 Pasto v2.4</h1>
+<div className="flex gap-2">
+<button onClick={()=>setModal('gps-debug')} className="bg-white/20 hover:bg-white/30 px-2 py-1 rounded text-xs flex items-center gap-1">
+<AlertCircle size={14}/>Debug
+</button>
+<button onClick={exp} className="bg-white/20 hover:bg-white/30 px-3 py-2 rounded text-sm flex items-center gap-1">
+<Download size={16}/>Backup
+</button>
+<label className="bg-white/20 hover:bg-white/30 px-3 py-2 rounded text-sm flex items-center gap-1 cursor-pointer">
+<Upload size={16}/>Restaurar
+<input type="file" accept=".json" onChange={imp} className="hidden"/>
+</label>
+</div>
+</div>
+{fazAt&&<div className="text-sm flex items-center gap-2 flex-wrap">
+<span>📍 {fazAt.nome}</span>
+{gpsStatusBadge}
+</div>}
+</div>
+</div>
+
+{st&&<div className="max-w-7xl mx-auto px-4 pt-2"><div className={`p-2 rounded text-sm whitespace-pre-line ${st.includes('✅')?'bg-green-100 text-green-800':st.includes('❌')?'bg-red-100 text-red-800':'bg-blue-100 text-blue-800'}`}>{st}</div></div>}
+
+{fa&&<div className="bg-white border-b sticky top-0 z-10">
+<div className="max-w-7xl mx-auto flex gap-1 overflow-x-auto">
+{['mapa','piquetes','modulos','lotes','historico'].map(t=><button key={t} onClick={()=>setTab(t)} className={`px-4 py-2 font-semibold capitalize whitespace-nowrap ${tab===t?'border-b-2 border-green-600 text-green-600':'text-gray-600'}`}>{t}</button>)}
+</div>
+</div>}
+
+<div className="max-w-7xl mx-auto p-4">
+{!fa&&<div className="bg-white rounded-lg shadow p-6">
+<div className="flex justify-between items-center mb-4">
+<h2 className="text-xl font-bold">Fazendas</h2>
+<button onClick={()=>{setModal('fazenda');setFd({});setEd(null)}} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center gap-1">
+<Plus size={18}/>Nova
+</button>
+</div>
+{faz.length===0?<div className="text-center py-8 text-gray-500">Nenhuma fazenda</div>:
+<div className="grid gap-3">{faz.map(f=><div key={f.id} className="border-2 rounded-lg p-4 hover:border-green-500 transition">
+<div className="flex justify-between items-start">
+<h3 className="text-lg font-bold cursor-pointer hover:text-green-600" onClick={()=>{setFa(f.id);setTab('mapa')}}>{f.nome}</h3>
+<div className="flex gap-1">
+<button onClick={()=>{setEd(f);setFd({nome:f.nome,proprietario:f.proprietario});setModal('fazenda')}} className="text-blue-600 p-1"><Edit2 size={16}/></button>
+<button onClick={()=>delFaz(f.id)} className="text-red-600 p-1"><Trash2 size={16}/></button>
+</div>
+</div>
+{f.areaTotal>0?<div className="grid grid-cols-2 gap-2 text-sm text-gray-600 mt-2">
+<div><b>📊 Total:</b> {f.areaTotal}ha</div>
+<div><b>🌾 Útil:</b> {f.areaUtil}ha</div>
+<div className="col-span-2"><b>🌳 Preservação:</b> {f.areaPreservacao}ha ({f.areaTotal>0?((parseFloat(f.areaPreservacao)/parseFloat(f.areaTotal))*100).toFixed(0):0}%)</div>
+</div>:<div className="text-xs text-gray-500 mt-2 bg-yellow-50 border border-yellow-200 rounded p-2">⚠️ Importe KML para calcular áreas</div>}
+</div>)}</div>}
+</div>}
+
+{fa&&tab==='mapa'&&<div className="bg-white rounded-lg shadow p-4">
+<div className="flex justify-between items-center mb-3 flex-wrap gap-2">
+<h2 className="text-xl font-bold">Mapa</h2>
+<div className="flex gap-2">
+<button onClick={centerGPS} className="bg-blue-500 text-white px-3 py-2 rounded flex items-center gap-1 text-sm hover:bg-blue-600">
+<Target size={16}/>GPS
+</button>
+<label className="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 cursor-pointer flex items-center gap-1 text-sm">
+<Upload size={14}/>{piqF.length===0?'Importar':'Atualizar'} KML
+<input type="file" accept=".kml,.xml" onChange={hKML} className="hidden"/>
+</label>
+</div>
+</div>
+{piqF.length===0?<div className="text-center py-12 text-gray-500"><MapPin size={48} className="mx-auto mb-2 text-gray-300"/><p>Importe um KML para começar</p><p className="text-xs mt-2">As áreas serão calculadas automaticamente</p></div>:
+<><div className="flex gap-2 mb-2 flex-wrap">
+<button onClick={()=>setZm(Math.min(zm+0.2,5))} className="bg-gray-200 p-2 rounded hover:bg-gray-300"><ZoomIn size={18}/></button>
+<button onClick={()=>setZm(Math.max(zm-0.2,0.5))} className="bg-gray-200 p-2 rounded hover:bg-gray-300"><ZoomOut size={18}/></button>
+<button onClick={()=>{setZm(1);setPn({x:0,y:0})}} className="bg-gray-200 p-2 rounded hover:bg-gray-300"><RotateCcw size={18}/></button>
+<div className="ml-auto text-xs text-gray-600 flex items-center">Zoom: {(zm*100).toFixed(0)}%</div>
+</div>
+<div className="border-2 rounded bg-gray-50 overflow-hidden select-none map-container" ref={svgRef} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
+<svg viewBox="0 0 1000 800" className="w-full h-auto" style={{minHeight:'400px'}}>
+<g transform={`translate(${pn.x},${pn.y}) scale(${zm})`}>
+{modF.map((m,midx)=>{const pM=piq.filter(p=>m.piquetesIds.includes(p.id));if(pM.length===0)return null;return <g key={`mod-${m.id}`}>{pM.map(p=>{if(!p.coordinates||p.coordinates.length===0||p.ehReserva)return null;const path=getPath(p.coordinates,mb,1000,800);return <path key={`modbg-${p.id}`} d={path} fill={getModuloCor(midx)} stroke="none"/>})}</g>})}
+{piqFil.filter(p=>p.coordinates&&p.coordinates.length>0).map((p,pidx)=>{const path=getPath(p.coordinates,mb,1000,800),cent=getCent(p.coordinates),[cx,cy]=projC(cent[0],cent[1],mb,1000,800),st=getSt(p),lt=st.status==='ocupado'?getLI(p):0,l=st.loteId?lot.find(x=>x.id===st.loteId):null;const mIdx=modF.findIndex(m=>m.piquetesIds.includes(p.id));let fc='#e2e8f0',sc='#94a3b8',sw=2;if(p.ehReserva){fc='rgba(22,101,52,0.7)';sc='#166534';sw=3}else if(st.status==='ocupado'&&l){fc=getModuloCorForte(mIdx>=0?mIdx:0);sc=getLoteCor(lotF.findIndex(x=>x.id===l.id));sw=6}else if(mIdx>=0){fc=getModuloCor(mIdx);sc='#64748b'}return <g key={p.id}>
+<path d={path} fill={fc} stroke={sc} strokeWidth={sw} opacity="0.95" className={p.ehReserva?"":"cursor-pointer hover:opacity-100"} onClick={e=>{if(!p.ehReserva){e.stopPropagation();setSel(p)}}}/>
+<text x={cx} y={cy-65} textAnchor="middle" fill="#1e293b" fontSize="26" fontWeight="bold" className="pointer-events-none">{p.ehReserva?'🌳 ':''}{p.nome}</text>
+<text x={cx} y={cy-38} textAnchor="middle" fill="#64748b" fontSize="20" className="pointer-events-none">{p.area}ha</text>
+{p.ehReserva&&<text x={cx} y={cy-10} textAnchor="middle" fill="#166534" fontSize="18" fontWeight="600" className="pointer-events-none">RESERVA</text>}
+{!p.ehReserva&&st.status==='ocupado'&&l&&<><text x={cx} y={cy-5} textAnchor="middle" fontSize="32" className="pointer-events-none"><tspan fill={getLoteCor(lotF.findIndex(x=>x.id===l.id))}>●</tspan> <tspan fontSize="28">🐮</tspan></text>
+<text x={cx} y={cy+20} textAnchor="middle" fill="#1e293b" fontSize="20" fontWeight="700" className="pointer-events-none">{l.nome}</text>
+<text x={cx} y={cy+42} textAnchor="middle" fill="#475569" fontSize="18" fontWeight="600" className="pointer-events-none">{lt} UA/ha</text>
+<text x={cx} y={cy+62} textAnchor="middle" fill="#64748b" fontSize="18" className="pointer-events-none">⏱️ {st.dias}d</text></>}
+{!p.ehReserva&&st.status==='vazio'&&<text x={cx} y={cy+5} textAnchor="middle" fill="#94a3b8" fontSize="20" className="pointer-events-none">Vazio</text>}
+{!p.ehReserva&&st.status==='vazio'&&st.dias>0&&<text x={cx} y={cy+28} textAnchor="middle" fill="#94a3b8" fontSize="18" className="pointer-events-none">⏱️ {st.dias}d</text>}
+</g>})}
+{gps&&mb&&<g><circle cx={projC(gps.lng,gps.lat,mb,1000,800)[0]} cy={projC(gps.lng,gps.lat,mb,1000,800)[1]} r="12" fill="#3b82f6" opacity="0.2" className="gps-pulse"/><circle cx={projC(gps.lng,gps.lat,mb,1000,800)[0]} cy={projC(gps.lng,gps.lat,mb,1000,800)[1]} r="6" fill="#3b82f6"/><text x={projC(gps.lng,gps.lat,mb,1000,800)[0]} y={projC(gps.lng,gps.lat,mb,1000,800)[1]-14} textAnchor="middle" fill="#1e40af" fontSize="14" fontWeight="bold">📍</text></g>}
+</g>
+</svg>
+</div></>}
+</div>}
+
+{fa&&tab==='piquetes'&&<div className="bg-white rounded-lg shadow p-4">
+<div className="flex justify-between items-center mb-4">
+<div className="flex-1 flex items-center gap-2">
+<h2 className="text-xl font-bold">Piquetes</h2>
+<div className="relative flex-1 max-w-xs">
+<Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" size={16}/>
+<input type="text" placeholder="Buscar..." value={sch} onChange={e=>setSch(e.target.value)} className="w-full pl-8 pr-3 py-1 border rounded text-sm"/>
+</div>
+</div>
+</div>
+{piqFil.length===0?<div className="text-center py-8 text-gray-500">Nenhum piquete</div>:
+<div className="grid gap-3">{piqFil.map(p=>{const st=getSt(p),l=st.loteId?lot.find(x=>x.id===st.loteId):null,m=modF.find(x=>x.piquetesIds.includes(p.id));return <div key={p.id} className={`border-2 rounded-lg p-4 ${p.ehReserva?'bg-green-50 border-green-300':''}`}>
+<div className="flex justify-between items-start mb-2">
+<div className="flex-1">
+<h3 className="font-bold text-lg flex items-center gap-2">{p.ehReserva&&'🌳'}{p.nome}</h3>
+<p className="text-sm text-gray-600">{p.area}ha{m&&<span className="ml-2 text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded">📦 {m.nome}</span>}{p.ehReserva&&<span className="ml-2 text-xs bg-green-700 text-white px-2 py-0.5 rounded font-semibold">RESERVA</span>}</p>
+{!p.ehReserva&&(st.status==='ocupado'&&l?<div className="mt-1"><span className="inline-block bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-semibold">✅ Ocupado</span><div className="text-xs text-gray-700 mt-1"><b>Lote:</b> {l.nome} • {st.dias}d</div></div>:
+<span className="inline-block bg-gray-100 text-gray-800 px-2 py-1 rounded text-xs">Vazio</span>)}
+</div>
+<div className="flex gap-1">
+<button onClick={()=>{setEd(p);setFd({nome:p.nome,ehReserva:p.ehReserva||false});setModal('piquete')}} className="text-blue-600 p-1"><Edit2 size={16}/></button>
+<button onClick={()=>delPiq(p.id)} className="text-red-600 p-1"><Trash2 size={16}/></button>
+</div>
+</div>
+</div>})}</div>}
+</div>}
+
+{fa&&tab==='modulos'&&<div className="bg-white rounded-lg shadow p-4">
+<div className="flex justify-between items-center mb-4">
+<h2 className="text-xl font-bold">Módulos</h2>
+<button onClick={()=>{setModal('modulo');setFd({});setEd(null)}} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center gap-1">
+<Plus size={16}/>Novo
+</button>
+</div>
+{modF.length===0?<div className="text-center py-8 text-gray-500">Nenhum módulo</div>:
+<div className="grid gap-3">{modF.map((m,idx)=>{const pM=piq.filter(p=>m.piquetesIds.includes(p.id)),aT=pM.reduce((s,p)=>s+parseFloat(p.area||0),0);return <div key={m.id} className="border-2 rounded-lg p-4" style={{borderColor:getModuloCor(idx).replace('0.15','0.6'),backgroundColor:getModuloCor(idx)}}>
+<div className="flex justify-between items-start mb-2">
+<div className="flex-1">
+<h3 className="font-bold text-lg">{m.nome}</h3>
+<p className="text-sm text-gray-600">{aT.toFixed(2)}ha · {pM.length} piq</p>
+</div>
+<div className="flex gap-1">
+<button onClick={()=>{setEd(m);setFd({nome:m.nome,piquetesSelecionados:m.piquetesIds});setModal('modulo')}} className="text-blue-600 p-1"><Edit2 size={16}/></button>
+<button onClick={()=>delMod(m.id)} className="text-red-600 p-1"><Trash2 size={16}/></button>
+</div>
+</div>
+<div className="text-xs text-gray-600">Piquetes: {pM.map(p=>p.nome).join(', ')}</div>
+</div>})}</div>}
+</div>}
+
+{fa&&tab==='lotes'&&<div className="bg-white rounded-lg shadow p-4">
+<div className="flex justify-between items-center mb-4">
+<div className="flex-1 flex items-center gap-2">
+<h2 className="text-xl font-bold">Lotes</h2>
+<div className="relative flex-1 max-w-xs">
+<Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" size={16}/>
+<input type="text" placeholder="Buscar..." value={sch} onChange={e=>setSch(e.target.value)} className="w-full pl-8 pr-3 py-1 border rounded text-sm"/>
+</div>
+</div>
+<button onClick={()=>{setModal('lote');setFd({});setEd(null)}} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center gap-1">
+<Plus size={16}/>Novo
+</button>
+</div>
+{lotFil.length===0?<div className="text-center py-8 text-gray-500">Nenhum lote</div>:
+<div className="grid gap-3">{lotFil.map((l,idx)=>{const p=l.piqueteAtual?piq.find(x=>x.id===l.piqueteAtual):null;const cor=getLoteCor(lotF.findIndex(x=>x.id===l.id));return <div key={l.id} className="border-2 rounded-lg p-4">
+<div className="flex justify-between items-start mb-2">
+<div className="flex-1">
+<div className="flex items-center gap-2 mb-1">
+<span style={{color:cor}} className="text-2xl">●</span>
+<h3 className="font-bold">{l.nome}</h3>
+</div>
+<p className="text-sm text-gray-600 mb-1">{l.categoria}</p>
+{l.status==='livre'?<div className="inline-block bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs font-semibold">🟡 Livre</div>:
+l.status==='vendido'?<div className="inline-block bg-gray-100 text-gray-800 px-2 py-1 rounded text-xs font-semibold">💰 Vendido</div>:
+<div><div className="inline-block bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-semibold">✅ Alocado</div>
+{p&&<div className="text-xs text-gray-700 mt-1"><div><b>Piquete:</b> {p.nome}</div><div><b>Lotação:</b> {(l.totalUA/parseFloat(p.area)).toFixed(2)} UA/ha</div></div>}
+</div>}
+</div>
+<div className="flex gap-1">
+<button onClick={()=>{setEd(l);setFd({nome:l.nome,categoria:l.categoria,pesoMedio:l.pesoMedio,quantidade:l.quantidade});setModal('lote')}} className="text-blue-600 p-1"><Edit2 size={16}/></button>
+<button onClick={()=>delLot(l.id)} className="text-red-600 p-1"><Trash2 size={16}/></button>
+</div>
+</div>
+<div className="grid grid-cols-2 gap-2 text-xs mt-2 pt-2 border-t">
+<div><b>Qtd:</b> {l.quantidade}</div>
+<div><b>Peso:</b> {l.pesoMedio}kg</div>
+<div><b>UA:</b> {l.totalUA}</div>
+<div><b>UA/cab:</b> {(l.totalUA/l.quantidade).toFixed(2)}</div>
+</div>
+</div>})}</div>}
+</div>}
+
+{fa&&tab==='historico'&&<div className="bg-white rounded-lg shadow p-4">
+<h2 className="text-xl font-bold mb-4">Histórico</h2>
+{his.filter(h=>h.fazendaId===fa).length===0?<div className="text-center py-8 text-gray-500">Sem movimentações</div>:
+<div className="space-y-2">{his.filter(h=>h.fazendaId===fa).sort((a,b)=>new Date(b.data)-new Date(a.data)).slice(0,50).map(i=>{const dt=new Date(i.data).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'});let ic='',tx='',cor='border-gray-200';switch(i.tipo){case 'alocacao':ic='🐮➡️';cor='border-green-200 bg-green-50';tx=`${i.loteName} → ${i.piqueteName}`;break;case 'retirada':ic='🐮⬅️';cor='border-yellow-200 bg-yellow-50';tx=`${i.loteName} ← ${i.piqueteName}`;break;case 'transferencia':ic='🔄';cor='border-blue-200 bg-blue-50';tx=`${i.loteName}: ${i.piqueteOrigemName} → ${i.piqueteDestinoName}`;break;case 'venda':ic='💰';cor='border-purple-200 bg-purple-50';tx=`Vendido: ${i.loteName}`;break;case 'importacao_kml':ic='📥';cor='border-blue-200 bg-blue-50';tx=`${i.quantidade} piquetes`;break;default:ic='📝';tx=i.tipo}return <div key={i.id} className={`border-2 ${cor} rounded p-3 flex items-start gap-2`}>
+<span className="text-lg">{ic}</span>
+<div className="flex-1">
+<p className="font-semibold text-sm">{tx}</p>
+<p className="text-xs text-gray-500 mt-1">{dt}</p>
+</div>
+</div>})}</div>}
+</div>}
+</div>
+
+{sel&&!sel.ehReserva&&<div className="fixed right-0 top-0 bottom-0 w-80 bg-white shadow-2xl p-4 overflow-y-auto z-50">
+<div className="flex justify-between items-start mb-4">
+<div>
+<h3 className="text-lg font-bold">{sel.nome}</h3>
+<p className="text-sm text-gray-600">{sel.area}ha</p>
+</div>
+<button onClick={()=>setSel(null)} className="text-gray-500"><X size={20}/></button>
+</div>
+{(()=>{const st=getSt(sel),l=st.loteId?lot.find(x=>x.id===st.loteId):null,lt=st.status==='ocupado'?getLI(sel):0;return st.status==='ocupado'?
+<div>
+<div className="border-2 rounded p-3 mb-3 bg-blue-50 border-blue-200">
+<div className="font-semibold mb-1">🔵 OCUPADO</div>
+<div className="text-2xl font-bold mb-1">{lt} UA/ha</div>
+</div>
+{l&&<div className="mb-3">
+<h4 className="font-bold mb-2 flex items-center gap-2"><span style={{color:getLoteCor(lotF.findIndex(x=>x.id===l.id))}} className="text-xl">●</span>🐮 {l.nome}</h4>
+<div className="bg-gray-50 rounded p-3 space-y-1 text-sm">
+<div><b>Categoria:</b> {l.categoria}</div>
+<div><b>Qtd:</b> {l.quantidade} cab</div>
+<div><b>UA:</b> {l.totalUA}</div>
+</div>
+</div>}
+<div className="mb-3 text-sm">⏱️ {st.dias} dias ocupado</div>
+<div className="space-y-2">
+<button onClick={()=>setModal('transferir')} className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 font-semibold flex items-center justify-center gap-2">
+<Navigation size={16}/>Transferir
+</button>
+<button onClick={()=>vender(sel.id)} className="w-full bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 font-semibold">
+💰 Vender
+</button>
+<button onClick={()=>retir(sel.id)} className="w-full bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700 font-semibold">
+❌ Retirar
+</button>
+</div>
+</div>:
+<div>
+<div className="bg-gray-50 border-2 border-gray-200 rounded p-3 mb-3">
+<div className="font-semibold mb-1">⚪ VAZIO</div>
+<div className="text-2xl font-bold mb-1">{st.dias} dias</div>
+</div>
+<button onClick={()=>setModal('alocar')} className="w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold">
+Alocar Lote
+</button>
+</div>})()}
+</div>}
+
+{modal==='gps-debug'&&<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+<div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-4 max-h-[90vh] overflow-y-auto">
+<div className="flex justify-between items-center mb-4">
+<h2 className="text-lg font-bold">🔍 Diagnóstico GPS</h2>
+<button onClick={()=>setModal(null)} className="text-gray-500"><X size={20}/></button>
+</div>
+<div className="space-y-3 text-sm">
+<div className="bg-gray-50 rounded p-3">
+<div className="font-semibold mb-1">Status:</div>
+<div>{gpsStatus==='ativo'?'✅ Ativo':gpsStatus==='buscando'?'⏳ Buscando...':gpsStatus==='erro'?'❌ Erro':'⚠️ Indisponível'}</div>
+</div>
+{gpsDebug.hasAPI!==undefined&&<div className="bg-gray-50 rounded p-3">
+<div className="font-semibold mb-1">API disponível:</div>
+<div>{gpsDebug.hasAPI?'✅ Sim':'❌ Não'}</div>
+</div>}
+{gpsDebug.protocol&&<div className="bg-gray-50 rounded p-3">
+<div className="font-semibold mb-1">Protocolo:</div>
+<div>{gpsDebug.protocol}</div>
+{gpsDebug.protocol==='file:'&&<div className="text-xs text-orange-600 mt-1">⚠️ file:// pode bloquear GPS no Chrome. Use Firefox ou servidor local.</div>}
+</div>}
+{gps&&<div className="bg-green-50 rounded p-3 border border-green-200">
+<div className="font-semibold mb-1">✅ Coordenadas:</div>
+<div className="text-xs font-mono">{gpsDebug.coords}</div>
+{gpsDebug.accuracy&&<div className="text-xs mt-1">Precisão: {gpsDebug.accuracy}</div>}
+{gpsDebug.lastSuccess&&<div className="text-xs mt-1">Última leitura: {new Date(gpsDebug.lastSuccess).toLocaleTimeString()}</div>}
+</div>}
+{gpsErr&&<div className="bg-red-50 rounded p-3 border border-red-200">
+<div className="font-semibold mb-1 text-red-800">❌ Erro:</div>
+<div className="text-xs">{gpsErr}</div>
+{gpsDebug.errorCode&&<div className="text-xs mt-1">Código: {gpsDebug.errorCode} {gpsDebug.errorCode===1&&'(Permissão negada)'}{gpsDebug.errorCode===2&&'(Posição indisponível)'}{gpsDebug.errorCode===3&&'(Timeout)'}</div>}
+</div>}
+<button onClick={testGPS} className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 font-semibold">
+🔄 Testar GPS Agora
+</button>
+<div className="text-xs text-gray-600 bg-blue-50 rounded p-3">
+<div className="font-semibold mb-1">💡 Dicas:</div>
+<ul className="list-disc pl-4 space-y-1">
+<li>No celular: ative GPS em Configurações</li>
+<li>Dê permissão ao navegador</li>
+<li>Aguarde 10-30s para sinal</li>
+<li>Saia pra área aberta se possível</li>
+<li>No PC: Chrome bloqueia file://, use Firefox</li>
+</ul>
+</div>
+</div>
+</div>
+</div>}
+
+{modal==='fazenda'&&<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+<div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-4 max-h-[90vh] overflow-y-auto">
+<div className="flex justify-between items-center mb-4">
+<h2 className="text-lg font-bold">{ed?'Editar':'Nova'} Fazenda</h2>
+<button onClick={()=>{setModal(null);setFd({});setFe([]);setEd(null)}} className="text-gray-500"><X size={20}/></button>
+</div>
+{fe.length>0&&<div className="mb-3 p-2 bg-red-50 border border-red-200 rounded">{fe.map((e,i)=><div key={i} className="text-red-800 text-xs">• {e}</div>)}</div>}
+<div className="space-y-3">
+<div>
+<label className="block text-xs font-semibold mb-1">Nome *</label>
+<input type="text" value={fd.nome||''} onChange={e=>setFd({...fd,nome:e.target.value})} className="w-full px-3 py-2 border rounded text-sm"/>
+</div>
+<div>
+<label className="block text-xs font-semibold mb-1">Proprietário</label>
+<input type="text" value={fd.proprietario||''} onChange={e=>setFd({...fd,proprietario:e.target.value})} className="w-full px-3 py-2 border rounded text-sm"/>
+</div>
+{!ed&&<div className="bg-blue-50 border border-blue-200 rounded p-3">
+<div className="text-xs text-blue-800">
+<b>ℹ️ Áreas calculadas automaticamente</b><br/>
+Após criar, importe o KML e as áreas serão calculadas automaticamente com detecção de reservas.
+</div>
+</div>}
+<div className="flex gap-2 pt-2">
+<button onClick={ed?edFaz:crFaz} className="flex-1 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold text-sm">{ed?'Salvar':'Criar'}</button>
+<button onClick={()=>{setModal(null);setFd({});setFe([]);setEd(null)}} className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm">Cancelar</button>
+</div>
+</div>
+</div>
+</div>}
+
+{modal==='piquete'&&<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+<div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-4">
+<div className="flex justify-between items-center mb-4">
+<h2 className="text-lg font-bold">Editar Piquete</h2>
+<button onClick={()=>{setModal(null);setFd({});setFe([]);setEd(null)}} className="text-gray-500"><X size={20}/></button>
+</div>
+{fe.length>0&&<div className="mb-3 p-2 bg-red-50 border border-red-200 rounded">{fe.map((e,i)=><div key={i} className="text-red-800 text-xs">• {e}</div>)}</div>}
+<div className="space-y-3">
+<div>
+<label className="block text-xs font-semibold mb-1">Nome *</label>
+<input type="text" value={fd.nome||''} onChange={e=>setFd({...fd,nome:e.target.value})} className="w-full px-3 py-2 border rounded text-sm"/>
+</div>
+<div>
+<label className="flex items-center gap-2 cursor-pointer">
+<input type="checkbox" checked={fd.ehReserva||false} onChange={e=>setFd({...fd,ehReserva:e.target.checked})} className="w-4 h-4"/>
+<span className="text-sm">🌳 Marcar como Reserva/Preservação</span>
+</label>
+</div>
+<div className="flex gap-2 pt-2">
+<button onClick={edPiq} className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 font-semibold text-sm">Salvar</button>
+<button onClick={()=>{setModal(null);setFd({});setFe([]);setEd(null)}} className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm">Cancelar</button>
+</div>
+</div>
+</div>
+</div>}
+
+{modal==='modulo'&&<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+<div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-4 max-h-[90vh] overflow-y-auto">
+<div className="flex justify-between items-center mb-4">
+<h2 className="text-lg font-bold">{ed?'Editar':'Novo'} Módulo</h2>
+<button onClick={()=>{setModal(null);setFd({});setFe([]);setEd(null)}} className="text-gray-500"><X size={20}/></button>
+</div>
+{fe.length>0&&<div className="mb-3 p-2 bg-red-50 border border-red-200 rounded">{fe.map((e,i)=><div key={i} className="text-red-800 text-xs">• {e}</div>)}</div>}
+<div className="space-y-3">
+<div>
+<label className="block text-xs font-semibold mb-1">Nome *</label>
+<input type="text" value={fd.nome||''} onChange={e=>setFd({...fd,nome:e.target.value})} className="w-full px-3 py-2 border rounded text-sm"/>
+</div>
+<div>
+<label className="block text-xs font-semibold mb-1">Piquetes (mín 2) *</label>
+<div className="border rounded p-3 max-h-48 overflow-y-auto space-y-1">
+{piqF.filter(p=>(!p.moduloId||p.moduloId===ed?.id)&&!p.ehReserva).map(p=><label key={p.id} className="flex items-center gap-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
+<input type="checkbox" checked={(fd.piquetesSelecionados||[]).includes(p.id)} onChange={e=>{const c=fd.piquetesSelecionados||[],u=e.target.checked?[...c,p.id]:c.filter(id=>id!==p.id);setFd({...fd,piquetesSelecionados:u})}} className="w-4 h-4"/>
+<div className="text-sm">
+<div className="font-semibold">{p.nome}</div>
+<div className="text-xs text-gray-600">{p.area}ha</div>
+</div>
+</label>)}
+</div>
+</div>
+<div className="flex gap-2 pt-2">
+<button onClick={ed?edMod:crMod} className="flex-1 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold text-sm">{ed?'Salvar':'Criar'}</button>
+<button onClick={()=>{setModal(null);setFd({});setFe([]);setEd(null)}} className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm">Cancelar</button>
+</div>
+</div>
+</div>
+</div>}
+
+{modal==='lote'&&<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+<div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-4 max-h-[90vh] overflow-y-auto">
+<div className="flex justify-between items-center mb-4">
+<h2 className="text-lg font-bold">{ed?'Editar':'Novo'} Lote</h2>
+<button onClick={()=>{setModal(null);setFd({});setFe([]);setEd(null)}} className="text-gray-500"><X size={20}/></button>
+</div>
+{fe.length>0&&<div className="mb-3 p-2 bg-red-50 border border-red-200 rounded">{fe.map((e,i)=><div key={i} className="text-red-800 text-xs">• {e}</div>)}</div>}
+<div className="space-y-3">
+<div>
+<label className="block text-xs font-semibold mb-1">Nome *</label>
+<input type="text" value={fd.nome||''} onChange={e=>setFd({...fd,nome:e.target.value})} className="w-full px-3 py-2 border rounded text-sm"/>
+</div>
+<div>
+<label className="block text-xs font-semibold mb-1">Categoria *</label>
+<select value={fd.categoria||''} onChange={e=>setFd({...fd,categoria:e.target.value})} className="w-full px-3 py-2 border rounded text-sm">
+<option value="">Selecione...</option>
+{cat.map(c=><option key={c} value={c}>{c}</option>)}
+</select>
+</div>
+<div className="grid grid-cols-2 gap-2">
+<div>
+<label className="block text-xs font-semibold mb-1">Peso(kg)*</label>
+<input type="number" step="0.01" value={fd.pesoMedio||''} onChange={e=>setFd({...fd,pesoMedio:e.target.value})} className="w-full px-3 py-2 border rounded text-sm"/>
+</div>
+<div>
+<label className="block text-xs font-semibold mb-1">Qtd *</label>
+<input type="number" value={fd.quantidade||''} onChange={e=>setFd({...fd,quantidade:e.target.value})} className="w-full px-3 py-2 border rounded text-sm"/>
+</div>
+</div>
+{fd.pesoMedio&&fd.quantidade&&<div className="bg-blue-50 border border-blue-200 rounded p-2">
+<div className="font-semibold text-blue-800 text-xs">Total UA: {calcUA(parseFloat(fd.pesoMedio),parseInt(fd.quantidade))}</div>
+</div>}
+{!ed&&<div>
+<label className="block text-xs font-semibold mb-1">Piquete Inicial (opcional)</label>
+<select value={fd.piqueteInicial||''} onChange={e=>setFd({...fd,piqueteInicial:e.target.value})} className="w-full px-3 py-2 border rounded text-sm">
+<option value="">Nenhum (alocar depois)</option>
+{piqF.filter(p=>!p.loteAtualId&&!p.ehReserva).map(p=><option key={p.id} value={p.id}>{p.nome} ({p.area}ha)</option>)}
+</select>
+</div>}
+<div className="flex gap-2 pt-2">
+<button onClick={ed?edLot:crLot} className="flex-1 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold text-sm">{ed?'Salvar':'Criar'}</button>
+<button onClick={()=>{setModal(null);setFd({});setFe([]);setEd(null)}} className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm">Cancelar</button>
+</div>
+</div>
+</div>
+</div>}
+
+{modal==='alocar'&&sel&&<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+<div className="bg-white rounded-lg shadow-2xl max-w-sm w-full p-4 max-h-[90vh] overflow-y-auto">
+<div className="flex justify-between items-center mb-3">
+<h2 className="text-lg font-bold">Alocar Lote</h2>
+<button onClick={()=>setModal(null)} className="text-gray-500"><X size={20}/></button>
+</div>
+<div className="mb-3">
+<div className="text-xs text-gray-600 mb-1">Piquete:</div>
+<div className="font-semibold">{sel.nome} ({sel.area}ha)</div>
+</div>
+<div className="space-y-2">
+<div className="text-xs font-semibold text-gray-700">Selecione o lote:</div>
+{(()=>{const ll=lotF.filter(l=>l.status==='livre');if(ll.length===0)return <p className="text-xs text-gray-500 bg-yellow-50 border border-yellow-200 rounded p-3">⚠️ Nenhum lote livre</p>;return ll.map((l,idx)=>{const lr=(l.totalUA/parseFloat(sel.area)).toFixed(2);const cor=getLoteCor(lotF.findIndex(x=>x.id===l.id));return <button key={l.id} onClick={()=>aloc(sel.id,l.id)} className="w-full text-left border-2 border-gray-200 rounded p-3 hover:border-green-500 hover:bg-green-50 transition">
+<div className="flex items-center gap-2 font-semibold mb-1">
+<span style={{color:cor}} className="text-xl">●</span>
+<span>🐮 {l.nome}</span>
+</div>
+<div className="text-xs text-gray-600 mt-1">{l.categoria} · {l.quantidade}cab · {l.totalUA}UA</div>
+<div className="mt-1 bg-blue-50 text-blue-800 text-xs font-semibold px-2 py-1 rounded inline-block">Lotação: {lr} UA/ha</div>
+</button>})})()}
+</div>
+</div>
+</div>}
+
+{modal==='transferir'&&sel&&<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+<div className="bg-white rounded-lg shadow-2xl max-w-sm w-full p-4 max-h-[90vh] overflow-y-auto">
+<div className="flex justify-between items-center mb-3">
+<h2 className="text-lg font-bold">Transferir Lote</h2>
+<button onClick={()=>setModal(null)} className="text-gray-500"><X size={20}/></button>
+</div>
+{(()=>{const l=lot.find(x=>x.id===sel.loteAtualId);if(!l)return null;const cor=getLoteCor(lotF.findIndex(x=>x.id===l.id));return <>
+<div className="mb-3">
+<div className="text-xs text-gray-600 mb-1">Origem:</div>
+<div className="font-semibold">{sel.nome} ({sel.area}ha)</div>
+<div className="flex items-center gap-2 text-sm mt-1">
+<span style={{color:cor}} className="text-lg">●</span>
+<span>🐮 {l.nome}</span>
+</div>
+</div>
+<div className="space-y-2">
+<div className="text-xs font-semibold text-gray-700">Destino:</div>
+{piqF.filter(p=>!p.loteAtualId&&p.id!==sel.id&&!p.ehReserva).map(p=>{const lr=(l.totalUA/parseFloat(p.area)).toFixed(2);return <button key={p.id} onClick={()=>transf(sel.id,p.id)} className="w-full text-left border-2 border-gray-200 rounded p-3 hover:border-blue-500 hover:bg-blue-50 transition">
+<div className="font-semibold">{p.nome}</div>
+<div className="text-xs text-gray-600 mt-1">{p.area}ha · Vazio</div>
+<div className="mt-1 bg-blue-50 text-blue-800 text-xs font-semibold px-2 py-1 rounded inline-block">Lotação: {lr} UA/ha</div>
+</button>})}
+</div>
+</>})()}
+</div>
+</div>}
+</div>}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
