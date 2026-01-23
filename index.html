@@ -253,7 +253,12 @@ function App() {
 
   const hKML = e => {
     const f = e.target.files[0];
-    if (!f || !data.fa) return;
+    if (!f) return;
+    if (!data.fa) {
+      alert('⚠️ Crie uma fazenda primeiro!\n\nVá em "Fazendas" e crie uma fazenda antes de importar o KML.');
+      e.target.value = '';
+      return;
+    }
     const r = new FileReader();
     r.onload = ev => {
       try {
@@ -277,6 +282,7 @@ function App() {
         setTimeout(() => setUi(ui => ({ ...ui, st: '' })), 3000);
       } catch (er) {
         setUi({ ...ui, st: `❌ ${er.message}` });
+        setTimeout(() => setUi(ui => ({ ...ui, st: '' })), 5000);
       }
     };
     r.readAsText(f);
@@ -503,10 +509,12 @@ function App() {
 
           <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
             <h2 className="text-xl font-bold">Mapa</h2>
-            <label className="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 cursor-pointer text-sm flex items-center gap-1">
-              <Upload size={16} />Importar KML
-              <input type="file" accept=".kml,.xml" onChange={hKML} className="hidden" />
-            </label>
+            <div style={{ position: 'relative', zIndex: 10 }}>
+              <button onClick={() => document.getElementById('kml-input').click()} className="bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 text-sm flex items-center gap-1">
+                <Upload size={16} />Importar KML
+              </button>
+              <input id="kml-input" type="file" accept="*/*" onChange={hKML} style={{ display: 'none' }} />
+            </div>
           </div>
           {piqF.length === 0 ? <div className="text-center py-12 text-gray-500">
             <MapPin size={48} className="mx-auto mb-2 text-gray-300" />
