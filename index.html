@@ -18,7 +18,19 @@
     <div id="root"></div>
     <script type="text/babel">
 const { useState, useEffect } = React;
+
 const gid = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+const calcArea = c => {
+    if (!c || c.length < 3) return 0;
+    let a = 0;
+    const n = c.length, lm = c.reduce((s, v) => s + v[1], 0) / n, fl = Math.cos(lm * Math.PI / 180);
+    for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n, xi = c[i][0] * fl * 111320, yi = c[i][1] * 110540, xj = c[j][0] * fl * 111320, yj = c[j][1] * 110540;
+        a += xi * yj - xj * yi;
+    }
+    return (Math.abs(a) / 2 / 10000).toFixed(2);
+};
 
 function App() {
     const [data, setData] = useState({ faz: [], fa: null, mod: [], piq: [], lot: [], his: [], mb: null });
@@ -35,36 +47,79 @@ function App() {
     }, [data]);
 
     const cadastrarFazenda = () => {
-        if(!tempNome) return alert("Digite o nome da fazenda");
+        if(!tempNome) return;
         const id = gid();
         setData({...data, faz:[...data.faz, {id, nome: tempNome}], fa: id});
-        setUi({ tab: 'mapa' }); // Vai direto para importar o KML
+        setUi({ tab: 'mapa' });
+    };
+
+    const handleKML = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const parser = new DOMParser();
+                const xml = parser.parseFromString(event.target.result, 'text/xml');
+                const placemarks = Array.from(xml.getElementsByTagName('Placemark'));
+                
+                let minLat = 180, maxLat = -180, minLng = 180, maxLng = -180;
+                
+                const novosPiquetes = placemarks.map(pm => {
+                    const coStr = pm.getElementsByTagName('coordinates')[0]?.textContent.trim();
+                    if (!coStr) return null;
+
+                    const coords = coStr.split(/\s+/).map(pair => {
+                        const [lng, lat] = pair.split(',').map(parseFloat);
+                        if (lng < minLng) minLng = lng; if (lng > maxLng) maxLng = lng;
+                        if (lat < minLat) minLat = lat; if (lat > maxLat) maxLat = lat;
+                        return [lng, lat];
+                    });
+
+                    return {
+                        id: gid(),
+                        fazendaId: data.fa,
+                        nome: pm.getElementsByTagName('name')[0]?.textContent || 'Área s/ nome',
+                        area: calcArea(coords),
+                        coordinates: coords
+                    };
+                }).filter(p => p !== null);
+
+                setData(prev => ({
+                    ...prev,
+                    piq: [...prev.piq, ...novosPiquetes],
+                    mb: { minLat, maxLat, minLng, maxLng, width: maxLng - minLng, height: maxLat - minLat }
+                }));
+                
+                alert(`${novosPiquetes.length} áreas importadas com sucesso!`);
+            } catch (err) {
+                alert("Erro ao ler o ficheiro KML. Verifique o formato.");
+            }
+        };
+        reader.readAsText(file);
     };
 
     const fazAt = data.faz.find(f => f.id === data.fa);
 
     return (
         <div className="min-h-screen flex flex-col">
-            <header className="bg-[#15803d] text-white p-5 shadow-sm">
-                <h1 className="text-xl font-bold uppercase tracking-tight text-center">Pasto Verde Pro</h1>
+            <header className="bg-[#15803d] text-white p-5 shadow-sm text-center">
+                <h1 className="text-xl font-bold uppercase tracking-tight">Pasto Verde Pro</h1>
             </header>
 
             {!data.fa ? (
-                /* CADASTRO INICIAL LOGO NA CARA */
                 <main className="flex-1 p-6 flex flex-col items-center justify-center">
-                    <div className="bg-white p-8 rounded-2xl shadow-xl border border-gray-100 w-full max-w-md">
-                        <h2 className="text-[#374151] text-xl font-bold mb-6 text-center">Cadastrar Fazenda</h2>
+                    <div className="bg-white p-8 rounded-2xl shadow-xl border w-full max-w-md">
+                        <h2 className="text-[#374151] text-xl font-bold mb-6 text-center">Nova Fazenda</h2>
                         <input 
                             type="text" 
-                            placeholder="Nome da sua Fazenda"
+                            placeholder="Nome da Fazenda"
                             value={tempNome}
                             onChange={(e) => setTempNome(e.target.value)}
-                            className="w-full p-4 border-2 border-gray-200 rounded-xl mb-4 focus:border-[#15803d] outline-none font-medium"
+                            className="w-full p-4 border-2 rounded-xl mb-4 focus:border-[#15803d] outline-none"
                         />
-                        <button 
-                            onClick={cadastrarFazenda}
-                            className="w-full bg-[#15803d] text-white py-4 rounded-xl font-bold text-lg shadow-md active:scale-95 transition-all"
-                        >
+                        <button onClick={cadastrarFazenda} className="w-full bg-[#15803d] text-white py-4 rounded-xl font-bold text-lg shadow-md active:scale-95 transition-all">
                             CADASTRAR E CONTINUAR
                         </button>
                     </div>
@@ -72,12 +127,8 @@ function App() {
             ) : (
                 <>
                     <nav className="bg-white border-b flex overflow-x-auto no-scrollbar shadow-sm px-2">
-                        {['mapa', 'dashboard', 'piquetes', 'modulos', 'lotes', 'config'].map(t => (
-                            <button 
-                                key={t} 
-                                onClick={() => setUi({ tab: t })} 
-                                className={`px-5 py-4 text-[11px] font-bold uppercase tracking-widest whitespace-nowrap transition-all ${ui.tab === t ? 'border-b-[3px] border-[#22c55e] text-[#15803d]' : 'text-gray-400'}`}
-                            >
+                        {['mapa', 'dashboard', 'piquetes', 'modulos', 'lotes'].map(t => (
+                            <button key={t} onClick={() => setUi({ tab: t })} className={`px-5 py-4 text-[11px] font-bold uppercase whitespace-nowrap transition-all ${ui.tab === t ? 'border-b-[3px] border-[#22c55e] text-[#15803d]' : 'text-gray-400'}`}>
                                 {t}
                             </button>
                         ))}
@@ -85,17 +136,22 @@ function App() {
 
                     <main className="flex-1 p-4">
                         {ui.tab === 'mapa' && (
-                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 text-center">
-                                <h2 className="text-lg font-bold text-gray-700 mb-4 uppercase">Importar Mapa da Fazenda</h2>
-                                <p className="text-gray-500 mb-6">Para visualizar seus piquetes, selecione o arquivo KML abaixo:</p>
-                                <label className="block w-full bg-[#15803d] text-white py-6 rounded-2xl font-bold text-xl cursor-pointer shadow-lg active:scale-95 transition-all">
-                                    SELECIONAR ARQUIVO KML
-                                    <input type="file" className="hidden" onChange={() => alert('Função de leitura de KML ativa. Selecione o arquivo.')} />
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border text-center">
+                                <h2 className="text-lg font-bold text-gray-700 mb-4 uppercase">Importar Mapa</h2>
+                                <p className="text-gray-500 mb-6">Selecione o ficheiro KML da fazenda <strong>{fazAt.nome}</strong>:</p>
+                                <label className="block w-full bg-[#15803d] text-white py-8 rounded-2xl font-bold text-xl cursor-pointer shadow-lg active:scale-95 transition-all hover:bg-[#166534]">
+                                    SELECIONAR FICHEIRO KML
+                                    <input 
+                                        type="file" 
+                                        className="hidden" 
+                                        accept=".kml,application/vnd.google-earth.kml+xml" 
+                                        onChange={handleKML} 
+                                    />
                                 </label>
-                                <p className="mt-4 text-xs text-gray-400 font-bold uppercase">Fazenda Ativa: {fazAt.nome}</p>
+                                <p className="mt-4 text-xs text-gray-400 font-bold uppercase tracking-widest">Fazenda Selecionada: {fazAt.nome}</p>
                             </div>
                         )}
-                        {/* Outras abas permanecem com a lógica original de dados */}
+                        {/* Se houver dados de mapa, pode-se adicionar aqui a visualização SVG */}
                     </main>
                 </>
             )}
