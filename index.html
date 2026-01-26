@@ -2,1449 +2,299 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="mobile-web-app-capable" content="yes">
-  <title>Pasto Verde Pro v3.0 - Gestão de Pastagem</title>
-  
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>Pasto Verde Pro - Consultoria</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  
   <style>
-    body { margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    .map-bg { background-color: #e2e8f0; background-image: radial-gradient(#cbd5e1 1px, transparent 1px); background-size: 20px 20px; }
+    .glass { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); }
   </style>
 </head>
 <body>
   <div id="root"></div>
-  
+
   <script type="text/babel">
-const { useState, useEffect, useMemo, useRef } = React;
+    const { useState, useEffect, useMemo } = React;
 
-const I = ({ size = 20, children }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">{children}</svg>;
-const Upload = p => <I {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" /></I>;
-const Plus = p => <I {...p}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></I>;
-const Trash2 = p => <I {...p}><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></I>;
-const X = p => <I {...p}><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></I>;
-const MapPin = p => <I {...p}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></I>;
-const ZoomIn = p => <I {...p}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="11" y1="8" x2="11" y2="14" /><line x1="8" y1="11" x2="14" y2="11" /></I>;
-const ZoomOut = p => <I {...p}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="8" y1="11" x2="14" y2="11" /></I>;
-const RotateCcw = p => <I {...p}><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></I>;
-const Download = p => <I {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" /></I>;
-const Edit2 = p => <I {...p}><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></I>;
-const Navigation = p => <I {...p}><polygon points="3 11 22 2 13 21 11 13 3 11" /></I>;
-const Compass = p => <I {...p}><circle cx="12" cy="12" r="10" /><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" /></I>;
-const Maximize = p => <I {...p}><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" /></I>;
-const BarChart = p => <I {...p}><line x1="12" y1="20" x2="12" y2="10" /><line x1="18" y1="20" x2="18" y2="4" /><line x1="6" y1="20" x2="6" y2="16" /></I>;
-const ArrowRightLeft = p => <I {...p}><path d="M8 3L4 7l4 4" /><path d="M4 7h16" /><path d="m16 21 4-4-4-4" /><path d="M20 17H4" /></I>;
-const DollarSign = p => <I {...p}><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></I>;
-const ChevronDown = p => <I {...p}><polyline points="6 9 12 15 18 9" /></I>;
-const ChevronUp = p => <I {...p}><polyline points="18 15 12 9 6 15" /></I>;
-
-const gid = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-const calcArea = c => {
-  if (!c || c.length < 3) return 0;
-  let a = 0;
-  const n = c.length, lm = c.reduce((s, v) => s + v[1], 0) / n, fl = Math.cos(lm * Math.PI / 180);
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n, xi = c[i][0] * fl * 111320, yi = c[i][1] * 110540, xj = c[j][0] * fl * 111320, yj = c[j][1] * 110540;
-    a += xi * yj - xj * yi;
-  }
-  return (Math.abs(a) / 2 / 10000).toFixed(2);
-};
-const calcUA = (p, q) => !p || !q ? 0 : ((p * q) / 450).toFixed(2);
-const isReserva = nome => {
-  const n = nome.toLowerCase();
-  return n.includes('reserva') || n.includes('preserva') || n.includes('app') || n.includes('rl ') || n.includes('mata') || n.includes('floresta');
-};
-const calcDias = (dataInicio) => {
-  if (!dataInicio) return 0;
-  const hoje = new Date();
-  const inicio = new Date(dataInicio);
-  return Math.floor((hoje - inicio) / (1000 * 60 * 60 * 24));
-};
-const formatData = (d) => {
-  if (!d) return '';
-  const dt = new Date(d);
-  return dt.toLocaleDateString('pt-BR');
-};
-
-const loteCores = ['#fbbf24', '#3b82f6', '#10b981', '#f97316', '#8b5cf6', '#ec4899', '#ef4444', '#06b6d4', '#84cc16', '#a855f7'];
-const moduloCores = ['#10b981', '#8b5cf6', '#f97316', '#3b82f6', '#ec4899', '#fbbf24', '#06b6d4', '#84cc16'];
-const getLoteCor = idx => loteCores[idx % loteCores.length];
-const getModuloCor = idx => moduloCores[idx % moduloCores.length];
-const hexToRgba = (hex, alpha) => {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-};
-const pointInPolygon = (p, vs) => {
-  let inside = false;
-  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
-    const xi = vs[i][0], yi = vs[i][1], xj = vs[j][0], yj = vs[j][1];
-    if ((yi > p[1]) != (yj > p[1]) && (p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi)) inside = !inside;
-  }
-  return inside;
-};
-
-function App() {
-  const [data, setData] = useState({ faz: [], fa: null, mod: [], piq: [], lot: [], his: [], mb: null });
-  const [ui, setUi] = useState({ tab: 'mapa', modal: null, sel: null, st: '', zm: 1, pn: { x: 0, y: 0 }, fd: {}, exp: {} });
-  const [gps, setGps] = useState({ pos: null, status: 'buscando' });
-  const [touch, setTouch] = useState({ active: false, start: null, last: null, dist: 0 });
-  const svgRef = useRef(null);
-
-  useEffect(() => {
-    const s = localStorage.getItem('pastureSystem');
-    if (s) {
-      try {
-        const d = JSON.parse(s);
-        setData({ faz: d.fazendas || [], fa: d.fazendaAtual || null, mod: d.modulos || [], piq: d.piquetes || [], lot: d.lotes || [], his: d.historico || [], mb: d.mapBounds || null });
-      } catch (e) { }
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('pastureSystem', JSON.stringify({
-      version: '3.0.0',
-      fazendas: data.faz,
-      fazendaAtual: data.fa,
-      modulos: data.mod,
-      piquetes: data.piq,
-      lotes: data.lot,
-      historico: data.his,
-      mapBounds: data.mb
-    }));
-  }, [data]);
-
-  useEffect(() => {
-    if (!navigator.geolocation) {
-      setGps({ pos: null, status: 'indisponivel' });
-      return;
-    }
-    const id = navigator.geolocation.watchPosition(
-      p => setGps({ pos: { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }, status: 'ativo' }),
-      e => setGps(g => ({ ...g, status: 'erro' })),
-      { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
+    // --- COMPONENTES VISUAIS ---
+    const TouroIcon = ({ color = "#000", size = 32 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill={color} xmlns="http://www.w3.org/2000/svg">
+        <path d="M21.5,10.5C21.5,9.12 20.38,8 19,8H17.82C17.17,5.69 15,4 12.5,4C10,4 7.83,5.69 7.18,8H6C4.62,8 3.5,9.12 3.5,10.5C3.5,11.5 4.1,12.36 4.96,12.75C5,15.68 7.32,18.05 10.25,18.23V20H8V22H16V20H13.75V18.23C16.68,18.05 19,15.68 19.04,12.75C19.9,12.36 20.5,11.5 20.5,10.5M12.5,6C13.88,6 15,7.12 15,8.5C15,9.88 13.88,11 12.5,11C11.12,11 10,9.88 10,8.5C10,7.12 11.12,6 12.5,6Z" />
+      </svg>
     );
-    return () => navigator.geolocation.clearWatch(id);
-  }, []);
 
-  const getTouchDist = (t1, t2) => Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-
-  const handleTouchStart = (e) => {
-    if (e.touches.length === 1) {
-      const t = e.touches[0];
-      setTouch({ active: true, start: { x: t.clientX, y: t.clientY }, last: { x: ui.pn.x, y: ui.pn.y }, dist: 0 });
-    } else if (e.touches.length === 2) {
-      const d = getTouchDist(e.touches[0], e.touches[1]);
-      setTouch({ active: true, start: null, last: { x: ui.pn.x, y: ui.pn.y }, dist: d });
-    }
-  };
-
-  const handleTouchMove = (e) => {
-    if (!touch.active) return;
-    e.preventDefault();
-    
-    if (e.touches.length === 1 && touch.start) {
-      const t = e.touches[0];
-      const dx = t.clientX - touch.start.x;
-      const dy = t.clientY - touch.start.y;
-      setUi(u => ({ ...u, pn: { x: touch.last.x + dx, y: touch.last.y + dy } }));
-    } else if (e.touches.length === 2 && touch.dist > 0) {
-      const newDist = getTouchDist(e.touches[0], e.touches[1]);
-      const scale = newDist / touch.dist;
-      const newZoom = Math.max(0.3, Math.min(5, ui.zm * scale));
-      setUi(u => ({ ...u, zm: newZoom }));
-      setTouch(t => ({ ...t, dist: newDist }));
-    }
-  };
-
-  const handleTouchEnd = () => {
-    setTouch({ active: false, start: null, last: null, dist: 0 });
-  };
-
-  const getPiqGPS = useMemo(() => {
-    if (!gps.pos) return null;
-    return data.piq.find(x => x.fazendaId === data.fa && x.coordinates && x.coordinates.length > 0 && pointInPolygon([gps.pos.lng, gps.pos.lat], x.coordinates)) || null;
-  }, [gps.pos, data.piq, data.fa]);
-
-  const exp = () => {
-    const d = { fazendas: data.faz, modulos: data.mod, piquetes: data.piq, lotes: data.lot, historico: data.his, version: '3.0.0' };
-    const b = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' });
-    const u = URL.createObjectURL(b);
-    const a = document.createElement('a');
-    a.href = u;
-    a.download = `backup-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(u);
-    setUi({ ...ui, st: '✅ Backup criado com sucesso.' });
-    setTimeout(() => setUi(ui => ({ ...ui, st: '' })), 3000);
-  };
-
-  const imp = e => {
-    const f = e.target.files[0];
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = ev => {
-      try {
-        const d = JSON.parse(ev.target.result);
-        if (confirm('Importar backup? Substitui todos os dados.')) {
-          setData({ faz: d.fazendas || [], fa: null, mod: d.modulos || [], piq: d.piquetes || [], lot: d.lotes || [], his: d.historico || [], mb: null });
-          setUi({ ...ui, st: '✅ Backup importado com sucesso.' });
-        }
-      } catch (er) {
-        setUi({ ...ui, st: '❌ Não foi possível importar o backup.' });
+    // --- AUXILIARES ---
+    const gid = () => `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    const calcArea = c => {
+      if (!c || c.length < 3) return 0;
+      let a = 0;
+      const n = c.length, fl = Math.cos(c[0][1] * Math.PI / 180);
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n;
+        const xi = c[i][0] * fl * 111320, yi = c[i][1] * 110540;
+        const xj = c[j][0] * fl * 111320, yj = c[j][1] * 110540;
+        a += xi * yj - xj * yi;
       }
+      return (Math.abs(a) / 2 / 10000).toFixed(2);
     };
-    r.readAsText(f);
-    e.target.value = '';
-  };
 
-  const parseKML = t => {
-    const p = new DOMParser(), x = p.parseFromString(t, 'text/xml');
-    if (x.querySelector('parsererror')) throw new Error('KML inválido');
-    const pl = x.getElementsByTagName('Placemark');
-    if (pl.length === 0) throw new Error('Sem áreas no KML');
-    const np = [];
-    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity, aT = 0, aR = 0;
-    for (let i = 0; i < pl.length; i++) {
-      const pm = pl[i], ne = pm.getElementsByTagName('name')[0], nm = ne ? ne.textContent.trim() : `Área ${i + 1}`;
-      const ce = pm.getElementsByTagName('coordinates')[0];
-      let co = [], ar = 0;
-      const reserva = isReserva(nm);
-      if (ce) {
-        const ct = ce.textContent.trim(), cp = ct.split(/\s+/);
-        co = cp.map(pr => {
-          const [lng, lat] = pr.split(',').map(parseFloat);
-          if (!isNaN(lng) && !isNaN(lat)) {
-            minLng = Math.min(minLng, lng);
-            maxLng = Math.max(maxLng, lng);
-            minLat = Math.min(minLat, lat);
-            maxLat = Math.max(maxLat, lat);
-            return [lng, lat];
-          }
-          return null;
-        }).filter(c => c);
-        if (co.length > 2) {
-          ar = parseFloat(calcArea(co));
-          aT += ar;
-          if (reserva) aR += ar;
-        }
-      }
-      np.push({
-        id: gid(),
-        fazendaId: data.fa,
-        moduloId: null,
-        nome: nm,
-        area: ar,
-        coordinates: co,
-        loteAtualId: null,
-        dataEntrada: null,
-        dataSaida: null,
-        ehReserva: reserva,
-        dataCriacao: new Date().toISOString()
+    function App() {
+      // ESTADO INICIAL
+      const [data, setData] = useState(() => {
+        const saved = localStorage.getItem('pasto_verde_pro');
+        return saved ? JSON.parse(saved) : { faz: [], fa: null, piq: [], lot: [], mod: [], mb: null };
       });
-    }
-    const mb = { minLat, maxLat, minLng, maxLng, centerLat: (minLat + maxLat) / 2, centerLng: (minLng + maxLng) / 2, width: maxLng - minLng, height: maxLat - minLat };
-    return { piquetes: np, stats: { total: aT.toFixed(2), reserva: aR.toFixed(2), util: (aT - aR).toFixed(2) }, mapBounds: mb };
-  };
+      const [ui, setUi] = useState({ tab: 'dashboard', sel: null, modal: null });
 
-  const hKML = e => {
-    const f = e.target.files[0];
-    if (!f) return;
-    if (!data.fa) {
-      alert('⚠️ Crie uma fazenda primeiro!\n\nVá em "Fazendas" e crie uma fazenda antes de importar o KML.');
-      e.target.value = '';
-      return;
-    }
-    const r = new FileReader();
-    r.onload = ev => {
-      try {
-        const res = parseKML(ev.target.result);
-        const piqExistentes = data.piq.filter(p => p.fazendaId === data.fa);
-        if (piqExistentes.length > 0 && !confirm('Substituir áreas existentes?')) return;
-        
-        setData({
-          ...data,
-          piq: data.piq.filter(p => p.fazendaId !== data.fa).concat(res.piquetes),
-          mb: res.mapBounds,
-          faz: data.faz.map(f => f.id === data.fa ? {
-            ...f,
-            areaTotal: res.stats.total,
-            areaPreservacao: res.stats.reserva,
-            areaUtil: res.stats.util
-          } : f)
-        });
-        
-        setUi({ ...ui, st: `✅ ${res.piquetes.length} áreas importadas!`, zm: 1, pn: { x: 0, y: 0 } });
-        setTimeout(() => setUi(ui => ({ ...ui, st: '' })), 3000);
-      } catch (er) {
-        setUi({ ...ui, st: `❌ ${er.message}` });
-        setTimeout(() => setUi(ui => ({ ...ui, st: '' })), 5000);
-      }
-    };
-    r.readAsText(f);
-    e.target.value = '';
-  };
+      useEffect(() => { localStorage.setItem('pasto_verde_pro', JSON.stringify(data)); }, [data]);
 
-  const projC = (lng, lat, b, w, h) => {
-    if (!b) return [0, 0];
-    const p = 50;
-    return [((lng - b.minLng) / b.width) * (w - p * 2) + p, ((b.maxLat - lat) / b.height) * (h - p * 2) + p];
-  };
+      // DADOS FILTRADOS
+      const fazAt = data.faz.find(f => f.id === data.fa);
+      const piquetes = data.piq.filter(p => p.fazendaId === data.fa);
+      const lotes = data.lot.filter(l => l.fazendaId === data.fa);
+      const modulos = data.mod.filter(m => m.fazendaId === data.fa);
 
-  const getPath = (c, b, w, h) => {
-    if (!c || c.length === 0) return '';
-    return c.map((co, i) => {
-      const [x, y] = projC(co[0], co[1], b, w, h);
-      return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
-    }).join(' ') + ' Z';
-  };
+      // PROJEÇÃO DE MAPA
+      const proj = (lng, lat) => {
+        if (!data.mb) return [0, 0];
+        const x = ((lng - data.mb.minLng) / data.mb.width) * 800 + 100;
+        const y = ((data.mb.maxLat - lat) / data.mb.height) * 600 + 100;
+        return [x, y];
+      };
 
-  const getCent = c => {
-    if (!c || c.length === 0) return [0, 0];
-    let sLng = 0, sLat = 0;
-    c.forEach(co => { sLng += co[0]; sLat += co[1]; });
-    return [sLng / c.length, sLat / c.length];
-  };
-
-  const irParaGPS = () => {
-    if (!gps.pos || !data.mb) return;
-    const [gx, gy] = projC(gps.pos.lng, gps.pos.lat, data.mb, 1000, 800);
-    setUi({ ...ui, zm: 2, pn: { x: 500 - gx * 2, y: 400 - gy * 2 } });
-  };
-
-  const irParaMapa = () => {
-    setUi({ ...ui, zm: 1, pn: { x: 0, y: 0 } });
-  };
-
-  const orientarNorte = () => {
-    setUi({ ...ui, pn: { x: 0, y: 0 } });
-  };
-
-  const fazAt = data.faz.find(f => f.id === data.fa);
-  const piqF = data.piq.filter(p => p.fazendaId === data.fa);
-  const modF = data.mod.filter(m => m.fazendaId === data.fa);
-  const lotF = data.lot.filter(l => l.fazendaId === data.fa && l.status !== 'vendido');
-
-  const totalAnimais = lotF.reduce((s, l) => s + (l.quantidade || 0), 0);
-  const totalUA = lotF.reduce((s, l) => s + parseFloat(l.totalUA || 0), 0).toFixed(2);
-  const areaUtil = parseFloat(fazAt?.areaUtil || 0);
-  const lotacaoGlobal = areaUtil > 0 ? (totalUA / areaUtil).toFixed(2) : '0.00';
-
-  const piqOcupados = piqF.filter(p => p.loteAtualId).length;
-  const piqVazios = piqF.filter(p => !p.loteAtualId && !p.ehReserva).length;
-  const piqTotal = piqF.filter(p => !p.ehReserva).length;
-  const percOcupacao = piqTotal > 0 ? ((piqOcupados / piqTotal) * 100).toFixed(0) : 0;
-
-  const dataHoje = new Date().toLocaleDateString('pt-BR');
-
-  const getModuloStats = (modId) => {
-    const pqs = piqF.filter(p => p.moduloId === modId && !p.ehReserva);
-    const areaTotal = pqs.reduce((s, p) => s + parseFloat(p.area || 0), 0);
-    const lotesDoModulo = lotF.filter(l => l.piqueteAtual && pqs.find(p => p.id === l.piqueteAtual));
-    const uaTotal = lotesDoModulo.reduce((s, l) => s + parseFloat(l.totalUA || 0), 0);
-    const lotacao = areaTotal > 0 ? (uaTotal / areaTotal).toFixed(2) : '0.00';
-    return { areaTotal: areaTotal.toFixed(2), lotacao };
-  };
-
-  return <div className="min-h-screen bg-gray-50">
-    <div className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-4 shadow-lg">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-2xl font-bold mb-1">📊 Pasto Verde Pro v3.0</h1>
-        <p className="text-sm opacity-90">Gestão de pastagem simples e prática para o dia a dia.</p>
-        {fazAt && <div className="text-sm flex items-center gap-2 flex-wrap">
-          <button onClick={() => setUi({ ...ui, modal: 'trocar-fazenda' })} className="bg-white/20 hover:bg-white/30 px-2 py-1 rounded flex items-center gap-1 font-semibold">
-            📍 {fazAt.nome} ▼
-          </button>
-          <span className="text-xs opacity-80">📅 {dataHoje}</span>
-          {gps.status === 'ativo' && getPiqGPS && <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-semibold">✅ GPS | 📍 {getPiqGPS.nome}</span>}
-          {gps.status === 'ativo' && !getPiqGPS && <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs">✅ GPS Ativo</span>}
-        </div>}
-      </div>
-    </div>
-
-    {ui.st && <div className="max-w-7xl mx-auto px-4 pt-2">
-      <div className={`p-2 rounded text-sm ${ui.st.includes('✅') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{ui.st}</div>
-    </div>}
-
-    {data.fa && <div className="bg-white border-b sticky top-0 z-10">
-      <div className="max-w-7xl mx-auto flex gap-1 overflow-x-auto">
-        {['dashboard', 'mapa', 'piquetes', 'modulos', 'lotes', 'historico', 'config'].map(t => <button key={t} onClick={() => setUi({ ...ui, tab: t })} className={`px-4 py-2 font-semibold capitalize whitespace-nowrap ${ui.tab === t ? 'border-b-2 border-green-600 text-green-600' : 'text-gray-600'}`}>
-          {t === 'config' ? '⚙️' : t}
-        </button>)}
-      </div>
-    </div>}
-
-    <div className="max-w-7xl mx-auto p-4">
-      {!data.fa ? <div className="bg-white rounded-lg shadow p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold">Fazendas</h2>
-          <button onClick={() => setUi({ ...ui, modal: 'fazenda', fd: {} })} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center gap-1">
-            <Plus size={18} />Novo
-          </button>
-        </div>
-        {data.faz.length === 0 ? <div className="text-center py-8 text-gray-500">Nenhuma fazenda cadastrada</div> :
-          data.faz.map(f => <div key={f.id} className="border-2 rounded-lg p-4 mb-3 hover:border-green-500 transition cursor-pointer" onClick={() => { setData({ ...data, fa: f.id }); setUi({ ...ui, tab: 'dashboard' }); }}>
-            <h3 className="text-lg font-bold text-green-600 hover:text-green-700">{f.nome}</h3>
-            {f.areaTotal > 0 && <div className="text-sm text-gray-600 mt-2">
-              <div>📊 Total: {f.areaTotal}ha | 🌾 Útil: {f.areaUtil}ha</div>
-              <div>🌳 Preservação: {f.areaPreservacao}ha</div>
-            </div>}
-          </div>)}
-      </div> :
-
-        ui.tab === 'dashboard' ? <div className="space-y-4">
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <BarChart size={24} />Dashboard da Fazenda
-            </h2>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
-                <div className="text-xs text-blue-600 font-semibold mb-1">Área Total</div>
-                <div className="text-2xl font-bold text-blue-700">{fazAt?.areaTotal || 0}<span className="text-sm">ha</span></div>
-              </div>
-              
-              <div className="bg-green-50 border-2 border-green-200 rounded-lg p-4">
-                <div className="text-xs text-green-600 font-semibold mb-1">Área Útil</div>
-                <div className="text-2xl font-bold text-green-700">{fazAt?.areaUtil || 0}<span className="text-sm">ha</span></div>
-              </div>
-              
-              <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-4">
-                <div className="text-xs text-purple-600 font-semibold mb-1">Animais</div>
-                <div className="text-2xl font-bold text-purple-700">{totalAnimais}<span className="text-sm">cab</span></div>
-              </div>
-              
-              <div className="bg-indigo-50 border-2 border-indigo-200 rounded-lg p-4">
-                <div className="text-xs text-indigo-600 font-semibold mb-1">Total UA</div>
-                <div className="text-2xl font-bold text-indigo-700">{totalUA}<span className="text-sm">ua</span></div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <div className="bg-white border-2 border-gray-200 rounded-lg p-4 text-center">
-                <div className="text-sm text-gray-600 mb-1">Lotação Global</div>
-                <div className="text-3xl font-bold text-gray-800">{lotacaoGlobal}<span className="text-sm"> UA/ha</span></div>
-              </div>
-              <div className="bg-white border-2 border-gray-200 rounded-lg p-4 text-center">
-                <div className="text-sm text-gray-600 mb-1">Piquetes Ocupados</div>
-                <div className="text-3xl font-bold text-gray-800">{piqOcupados}/{piqTotal}</div>
-              </div>
-              <div className="bg-white border-2 border-gray-200 rounded-lg p-4 text-center">
-                <div className="text-sm text-gray-600 mb-1">Ocupação</div>
-                <div className="text-3xl font-bold text-gray-800">{percOcupacao}<span className="text-sm">%</span></div>
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-white border-2 border-gray-200 rounded-lg p-4">
-                <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
-                  📍 Piquetes
-                </h3>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span>Total:</span>
-                    <span className="font-bold">{piqTotal}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Ocupados:</span>
-                    <span className="font-bold text-green-600">{piqOcupados}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Vazios:</span>
-                    <span className="font-bold text-blue-600">{piqVazios}</span>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="bg-white border-2 border-gray-200 rounded-lg p-4">
-                <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
-                  🐄 Lotes
-                </h3>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span>Total:</span>
-                    <span className="font-bold">{lotF.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Alocados:</span>
-                    <span className="font-bold text-green-600">{lotF.filter(l => l.status === 'alocado').length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Livres:</span>
-                    <span className="font-bold text-blue-600">{lotF.filter(l => l.status === 'livre').length}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            {modF.length > 0 && <div className="mt-6">
-              <h3 className="text-lg font-bold mb-3">📦 Módulos</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {modF.map((mod, idx) => {
-                  const stats = getModuloStats(mod.id);
-                  return <div key={mod.id} className="bg-white border-2 rounded-lg p-3" style={{ borderColor: getModuloCor(idx) }}>
-                    <div className="flex justify-between items-center">
-                      <span className="font-bold">{mod.nome}</span>
-                      <span className="text-sm">Área: {stats.areaTotal}ha</span>
-                    </div>
-                    <div className="text-sm text-gray-600">Lotação: {stats.lotacao} UA/ha</div>
-                  </div>;
-                })}
-              </div>
-            </div>}
-            
-          </div>
-        </div> :
-
-        ui.tab === 'mapa' ? <div className="bg-white rounded-lg shadow p-4">
-          <div className="flex justify-between items-center mb-3">
-            <h2 className="text-lg font-bold flex items-center gap-2">🗺️ Mapa da Fazenda</h2>
-            <div className="flex gap-2">
-              <button onClick={irParaMapa} className="p-2 bg-gray-100 rounded hover:bg-gray-200" title="Reset zoom"><Maximize size={18} /></button>
-              <button onClick={irParaGPS} className={`p-2 rounded ${gps.status === 'ativo' ? 'bg-green-100 hover:bg-green-200' : 'bg-gray-100'}`} title="Ir para GPS"><Navigation size={18} /></button>
-              <button onClick={orientarNorte} className="p-2 bg-gray-100 rounded hover:bg-gray-200" title="Orientar Norte"><Compass size={18} /></button>
-            </div>
-          </div>
+      // MANEJO DE KML
+      const handleKML = (e) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const parser = new DOMParser();
+          const xml = parser.parseFromString(event.target.result, "text/xml");
+          const placemarks = Array.from(xml.getElementsByTagName('Placemark'));
+          let minLat = 180, maxLat = -180, minLng = 180, maxLng = -180;
           
-          {!data.mb || piqF.length === 0 ? (
-            <div className="text-center py-20 text-gray-500">
-              <Upload size={48} />
-              <p className="mt-4">Importe um arquivo KML para visualizar o mapa</p>
-            </div>
-          ) : (
-            <div 
-              className="relative border-2 border-gray-200 rounded-lg overflow-hidden touch-none"
-              style={{ height: '70vh' }}
-              onTouchStart={handleTouchStart}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
-            >
-              <svg 
-                ref={svgRef}
-                width="100%" 
-                height="100%" 
-                viewBox="0 0 1000 800"
-                className="bg-green-50"
-                style={{
-                  transform: `translate(${ui.pn.x}px, ${ui.pn.y}px) scale(${ui.zm})`,
-                  transformOrigin: 'center center'
-                }}
-              >
-                {piqF.map((p, i) => {
-                  if (!p.coordinates || p.coordinates.length === 0) return null;
-                  const cor = p.loteAtualId ? '#10b981' : p.ehReserva ? '#e5e7eb' : '#fef3c7';
-                  const stroke = p.loteAtualId ? '#047857' : p.ehReserva ? '#9ca3af' : '#f59e0b';
-                  return (
-                    <g key={p.id}>
-                      <path
-                        d={getPath(p.coordinates, data.mb, 1000, 800)}
-                        fill={cor}
-                        stroke={stroke}
-                        strokeWidth={p.id === ui.sel?.id ? 3 : 1}
-                        onClick={() => setUi({ ...ui, modal: 'piquete-info', sel: p })}
-                        className="cursor-pointer"
-                      />
-                      {(() => {
-                        const [lng, lat] = getCent(p.coordinates);
-                        const [x, y] = projC(lng, lat, data.mb, 1000, 800);
-                        return <text x={x} y={y} textAnchor="middle" className="text-xs fill-gray-700">{p.nome}</text>;
-                      })()}
-                    </g>
-                  );
-                })}
-              </svg>
-              
-              <div className="absolute bottom-4 right-4 bg-white rounded-lg shadow p-2 space-y-2">
-                <button onClick={() => setUi({ ...ui, zm: Math.min(5, ui.zm * 1.2) })} className="block p-2 bg-gray-100 rounded hover:bg-gray-200">
-                  <ZoomIn size={20} />
-                </button>
-                <button onClick={() => setUi({ ...ui, zm: Math.max(0.3, ui.zm / 1.2) })} className="block p-2 bg-gray-100 rounded hover:bg-gray-200">
-                  <ZoomOut size={20} />
-                </button>
-                <button onClick={() => setUi({ ...ui, pn: { x: 0, y: 0 }, zm: 1 })} className="block p-2 bg-gray-100 rounded hover:bg-gray-200">
-                  <RotateCcw size={20} />
-                </button>
+          const novos = placemarks.map(p => {
+            const coordsStr = p.getElementsByTagName('coordinates')[0]?.textContent.trim();
+            const coords = coordsStr.split(/\s+/).map(line => {
+              const [lng, lat] = line.split(',').map(parseFloat);
+              if(lng < minLng) minLng = lng; if(lng > maxLng) maxLng = lng;
+              if(lat < minLat) minLat = lat; if(lat > maxLat) maxLat = lat;
+              return [lng, lat];
+            });
+            return { id: gid(), fazendaId: data.fa, nome: p.getElementsByTagName('name')[0]?.textContent || "Área", area: calcArea(coords), coordinates: coords, moduloId: null, loteId: null };
+          });
+          
+          setData(d => ({...d, piq: [...d.piq, ...novos], mb: {minLat, maxLat, minLng, maxLng, width: maxLng-minLng, height: maxLat-minLat}}));
+        };
+        reader.readAsText(e.target.files[0]);
+      };
+
+      return (
+        <div className="max-w-md mx-auto min-h-screen pb-24 relative shadow-2xl bg-white">
+          {/* HEADER PROFISSIONAL */}
+          <header className="bg-[#064e3b] text-white p-6 rounded-b-[2rem] shadow-lg">
+            <div className="flex justify-between items-center">
+              <div>
+                <h1 className="text-2xl font-extrabold tracking-tight">PASTO VERDE <span className="text-green-400">PRO</span></h1>
+                <p className="text-xs font-semibold opacity-70 uppercase tracking-widest">{fazAt?.nome || "Consultoria Líder"}</p>
               </div>
+              <div className="bg-green-800/50 p-2 rounded-full"><TouroIcon color="#4ade80" size={24}/></div>
             </div>
-          )}
-        </div> :
+          </header>
 
-        ui.tab === 'piquetes' ? <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold">Piquetes</h2>
-            <button onClick={() => setUi({ ...ui, modal: 'piquete', fd: {} })} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center gap-1">
-              <Plus size={18} />Novo
-            </button>
-          </div>
-          {piqF.filter(p => !p.ehReserva).length === 0 ? <div className="text-center py-8 text-gray-500">Nenhum piquete cadastrado</div> :
-            piqF.filter(p => !p.ehReserva).map((p, idx) => {
-              const modulo = modF.find(m => m.id === p.moduloId);
-              return (
-                <div key={p.id} className="border-2 rounded-lg p-4 mb-3 hover:border-green-500 transition">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="text-lg font-bold">{p.nome}</h3>
-                      <p className="text-sm text-gray-600">{p.area} ha {modulo && `| ${modulo.nome}`}</p>
-                      <p className="text-xs text-gray-500 mt-1">Última saída: {formatData(p.dataSaida) || 'N/A'} | Dias vazio: {calcDias(p.dataSaida || p.dataCriacao)}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      {p.loteAtualId && <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded">Ocupado</span>}
-                      {!p.loteAtualId && <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">Livre</span>}
+          <main className="p-4">
+            {!data.fa ? (
+              <div className="mt-10 space-y-4">
+                <h2 className="text-center font-bold text-gray-400">SELECIONE UMA PROPRIEDADE</h2>
+                {data.faz.map(f => (
+                  <button key={f.id} onClick={() => setData({...data, fa: f.id})} className="w-full bg-white border-2 border-gray-100 p-5 rounded-2xl shadow-sm text-left font-bold text-gray-700 flex justify-between">
+                    {f.nome} <span>→</span>
+                  </button>
+                ))}
+                <button onClick={() => {const n = prompt("Nome:"); if(n) setData({...data, faz:[...data.faz, {id:gid(), nome:n}]})}} className="w-full border-2 border-dashed border-gray-300 p-5 rounded-2xl text-gray-400 font-bold">+ Nova Fazenda</button>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                
+                {/* DASHBOARD TAB */}
+                {ui.tab === 'dashboard' && (
+                  <div className="animate-in slide-in-from-bottom-4 duration-500">
+                    <div className="bg-white rounded-3xl p-6 shadow-xl shadow-gray-200 border border-gray-100 mb-4">
+                      <h3 className="text-gray-400 text-xs font-bold uppercase mb-4">Resumo da Estação</h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-3xl font-black text-gray-800">{piquetes.length}</p>
+                          <p className="text-[10px] text-gray-500 font-bold">PIQUETES TOTAIS</p>
+                        </div>
+                        <div>
+                          <p className="text-3xl font-black text-green-600">{lotes.length}</p>
+                          <p className="text-[10px] text-gray-500 font-bold">LOTES EM MANEJO</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex gap-2 mt-3">
-                    <button onClick={() => setUi({ ...ui, modal: 'piquete', sel: p, fd: { ...p } })} className="px-3 py-1 bg-gray-100 rounded hover:bg-gray-200 text-sm">Editar</button>
-                    <button onClick={() => setUi({ ...ui, modal: 'piquete-info', sel: p })} className="px-3 py-1 bg-blue-100 rounded hover:bg-blue-200 text-sm">Detalhes</button>
-                  </div>
-                </div>
-              );
-            })}
-        </div> :
+                )}
 
-        ui.tab === 'modulos' ? <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold">Módulos</h2>
-            <button onClick={() => setUi({ ...ui, modal: 'modulo', fd: {} })} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center gap-1">
-              <Plus size={18} />Novo
-            </button>
-          </div>
-          {modF.length === 0 ? <div className="text-center py-8 text-gray-500">Nenhum módulo cadastrado</div> :
-            modF.map((m, idx) => {
-              const pqs = piqF.filter(p => p.moduloId === m.id);
-              const areaTotal = pqs.reduce((s, p) => s + parseFloat(p.area || 0), 0).toFixed(2);
-              const lotacao = getModuloStats(m.id).lotacao;
-              return (
-                <div key={m.id} className="border-2 rounded-lg p-4 mb-3" style={{ borderColor: getModuloCor(idx) }}>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="text-lg font-bold">{m.nome}</h3>
-                      <p className="text-sm text-gray-600">Área: {areaTotal} ha | Lotação: {lotacao} UA/ha</p>
-                      <p className="text-xs text-gray-500 mt-1">Piquetes: {pqs.filter(p => !p.ehReserva).length}</p>
+                {/* MAPA TAB */}
+                {ui.tab === 'mapa' && (
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <h2 className="font-extrabold text-gray-800">Mapa de Manejo</h2>
+                      <label className="bg-[#064e3b] text-white px-3 py-1 rounded-full text-xs font-bold cursor-pointer hover:bg-black transition">
+                        + KML <input type="file" onChange={handleKML} className="hidden"/>
+                      </label>
                     </div>
-                    <div className="flex gap-2">
-                      <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded">{pqs.filter(p => p.loteAtualId).length} ocupados</span>
+
+                    <div className="map-bg rounded-[2rem] border-4 border-white shadow-2xl overflow-hidden relative" style={{ height: '450px' }}>
+                      <svg viewBox="0 0 1000 800" className="w-full h-full">
+                        {piquetes.map(p => {
+                          const lote = lotes.find(l => l.id === p.loteId);
+                          const modulo = modulos.find(m => m.id === p.moduloId);
+                          // Lógica de cores do consultor:
+                          const strokeColor = lote ? lote.cor : (modulo ? modulo.cor : '#94a3b8');
+                          const fillColor = p.loteId ? `${lote.cor}33` : '#f1f5f9';
+                          const path = p.coordinates.map((c, i) => `${i === 0 ? 'M' : 'L'} ${proj(c[0], c[1])[0]} ${proj(c[0], c[1])[1]}`).join(' ') + ' Z';
+                          
+                          // Centro do piquete para o ícone
+                          const cx = p.coordinates.reduce((s,c)=>s+c[0],0)/p.coordinates.length;
+                          const cy = p.coordinates.reduce((s,c)=>s+c[1],0)/p.coordinates.length;
+                          const [px, py] = proj(cx, cy);
+
+                          return (
+                            <g key={p.id} onClick={() => setUi({...ui, sel: p})}>
+                              <path d={path} fill={fillColor} stroke={strokeColor} strokeWidth={p.loteId ? "6" : "2"} className="transition-all cursor-pointer" />
+                              {p.loteId && (
+                                <g transform={`translate(${px-16}, ${py-16})`}>
+                                  <circle cx="16" cy="16" r="20" fill="white" filter="drop-shadow(0 2px 2px rgba(0,0,0,0.2))"/>
+                                  <TouroIcon color={lote.cor} />
+                                </g>
+                              )}
+                            </g>
+                          );
+                        })}
+                      </svg>
+                      
+                      {/* PAINEL DE DETALHES FLUTUANTE */}
+                      {ui.sel && (
+                        <div className="absolute bottom-4 left-4 right-4 glass p-5 rounded-2xl shadow-2xl border border-white animate-in slide-in-from-bottom-10">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <h4 className="font-black text-gray-800 text-lg uppercase">{ui.sel.nome}</h4>
+                              <p className="text-xs text-gray-500 font-bold">{ui.sel.area} HECTARES</p>
+                            </div>
+                            <button onClick={() => setUi({...ui, sel: null})} className="text-gray-400 text-xl font-bold">×</button>
+                          </div>
+                          
+                          <div className="bg-gray-50 p-3 rounded-xl flex justify-between items-center">
+                            <div>
+                              <p className="text-[10px] text-gray-400 font-bold uppercase">Lotação Instantânea</p>
+                              <p className="text-xl font-black text-[#064e3b]">
+                                {ui.sel.loteId ? (lotes.find(l=>l.id===ui.sel.loteId).ua / ui.sel.area).toFixed(2) : "0.00"} 
+                                <span className="text-xs ml-1">UA/ha</span>
+                              </p>
+                            </div>
+                            {!ui.sel.loteId && <button onClick={() => {
+                              const lid = prompt("Selecione o ID do lote ou vincule na aba Lotes");
+                              if(lid) setData({...data, piq: data.piq.map(x => x.id === ui.sel.id ? {...x, loteId: lid} : x)});
+                            }} className="bg-green-600 text-white text-[10px] px-3 py-2 rounded-lg font-bold">ALOCAR GADO</button>}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div className="flex gap-2 mt-3">
-                    <button onClick={() => setUi({ ...ui, modal: 'modulo', sel: m, fd: { ...m } })} className="px-3 py-1 bg-gray-100 rounded hover:bg-gray-200 text-sm">Editar</button>
+                )}
+
+                {/* LOTES TAB */}
+                {ui.tab === 'lotes' && (
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <h2 className="font-extrabold text-gray-800">Rebanho em Engorda</h2>
+                      <button onClick={() => {
+                        const n = prompt("Nome do Lote:");
+                        const u = prompt("Total UA:");
+                        const c = prompt("Cor (ex: #ff0000 para vermelho):");
+                        if(n) setData({...data, lot: [...data.lot, {id: gid(), fazendaId: data.fa, nome: n, ua: u, cor: c || '#000'}]});
+                      }} className="bg-[#064e3b] text-white p-2 rounded-xl"><TouroIcon color="white" size={18}/></button>
+                    </div>
+                    {lotes.map(l => (
+                      <div key={l.id} className="bg-white p-4 rounded-2xl shadow-sm border-l-8" style={{borderColor: l.cor}}>
+                        <div className="flex justify-between">
+                          <h4 className="font-black text-gray-700">{l.nome}</h4>
+                          <span className="text-xs font-bold text-gray-400">{l.ua} UA</span>
+                        </div>
+                        <select 
+                          className="mt-2 w-full text-xs p-2 bg-gray-50 rounded-lg outline-none font-bold"
+                          onChange={(e) => {
+                            const pid = e.target.value;
+                            setData({...data, piq: data.piq.map(p => p.loteId === l.id ? {...p, loteId: null} : p.id === pid ? {...p, loteId: l.id} : p)});
+                          }}
+                        >
+                          <option>Mudar de Piquete...</option>
+                          {piquetes.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* MODULOS TAB */}
+                {ui.tab === 'modulos' && (
+                  <div className="space-y-4">
                     <button onClick={() => {
-                      if (confirm('Deletar este módulo?')) {
-                        setData({
-                          ...data,
-                          mod: data.mod.filter(md => md.id !== m.id),
-                          piq: data.piq.map(p => p.moduloId === m.id ? { ...p, moduloId: null } : p)
-                        });
-                        setUi({ ...ui, st: '✅ Módulo removido com sucesso.' });
-                        setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-                      }
-                    }} className="px-3 py-1 bg-red-100 rounded hover:bg-red-200 text-sm">Excluir</button>
+                      const n = prompt("Nome do Módulo:");
+                      const c = prompt("Cor do Módulo (ex: #ddd):");
+                      if(n) setData({...data, mod: [...data.mod, {id: gid(), fazendaId: data.fa, nome: n, cor: c}]});
+                    }} className="w-full bg-gray-800 text-white p-4 rounded-2xl font-bold">+ Criar Novo Módulo</button>
+                    {modulos.map(m => (
+                      <div key={m.id} className="bg-white p-4 rounded-2xl border-2 border-gray-100">
+                        <h4 className="font-black text-gray-800">{m.nome}</h4>
+                        <p className="text-[10px] text-gray-400 mb-2">VINCULAR PIQUETES:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {piquetes.map(p => (
+                            <button 
+                              key={p.id} 
+                              onClick={() => setData({...data, piq: data.piq.map(x => x.id === p.id ? {...x, moduloId: x.moduloId === m.id ? null : m.id} : x)})}
+                              className={`text-[10px] px-2 py-1 rounded-full font-bold transition ${p.moduloId === m.id ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-400'}`}
+                            >
+                              {p.nome}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              );
-            })}
-        </div> :
-
-        ui.tab === 'lotes' ? <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold">Lotes</h2>
-            <button onClick={() => setUi({ ...ui, modal: 'lote', fd: {} })} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center gap-1">
-              <Plus size={18} />Novo
-            </button>
-          </div>
-          {lotF.length === 0 ? <div className="text-center py-8 text-gray-500">Nenhum lote cadastrado</div> :
-            lotF.map((l, idx) => {
-              const piqAtual = l.piqueteAtual ? piqF.find(p => p.id === l.piqueteAtual) : null;
-              return (
-                <div key={l.id} className="border-2 rounded-lg p-4 mb-3" style={{ borderColor: getLoteCor(idx) }}>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="text-lg font-bold">{l.nome}</h3>
-                      <p className="text-sm text-gray-600">{l.quantidade} cabeças | {l.pesoMedio}kg | {l.totalUA} UA</p>
-                      {piqAtual && <p className="text-xs text-gray-500 mt-1">📍 {piqAtual.nome}</p>}
-                    </div>
-                    <div className="flex gap-2">
-                      <span className={`px-2 py-1 text-xs rounded ${l.status === 'alocado' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                        {l.status === 'alocado' ? 'Alocado' : 'Livre'}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 mt-3">
-                    <button onClick={() => setUi({ ...ui, modal: 'lote', sel: l, fd: { ...l } })} className="px-3 py-1 bg-gray-100 rounded hover:bg-gray-200 text-sm">Editar</button>
-                    <button onClick={() => setUi({ ...ui, modal: 'lote-info', sel: l })} className="px-3 py-1 bg-blue-100 rounded hover:bg-blue-200 text-sm">Detalhes</button>
-                    {l.status === 'livre' && <button onClick={() => {
-                      if (confirm('Deletar este lote?')) {
-                        setData({ ...data, lot: data.lot.filter(lo => lo.id !== l.id) });
-                        setUi({ ...ui, st: '✅ Lote excluído com sucesso.' });
-                        setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-                      }
-                    }} className="px-3 py-1 bg-red-100 rounded hover:bg-red-200 text-sm">Excluir</button>}
-                  </div>
-                </div>
-              );
-            })}
-        </div> :
-
-        ui.tab === 'historico' ? <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-bold mb-4">Histórico de Movimentações</h2>
-          {data.his.filter(h => h.fazendaId === data.fa).length === 0 ? <div className="text-center py-8 text-gray-500">Nenhuma movimentação registrada</div> :
-            <div className="space-y-3">
-              {data.his.filter(h => h.fazendaId === data.fa).sort((a,b) => new Date(b.data) - new Date(a.data)).map(h => {
-                const lote = data.lot.find(l => l.id === h.loteId);
-                const piq = data.piq.find(p => p.id === h.piqueteId);
-                return (
-                  <div key={h.id} className="border rounded-lg p-3">
-                    <div className="font-semibold">{h.descricao}</div>
-                    <div className="text-xs text-gray-500">{formatData(h.data)}</div>
-                    {lote && <div className="text-xs text-gray-600">🐄 {lote.nome}</div>}
-                    {piq && <div className="text-xs text-gray-600">📍 {piq.nome}</div>}
-                  </div>
-                );
-              })}
-            </div>
-          }
-        </div> :
-
-        ui.tab === 'config' ? <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-bold mb-4">Configurações</h2>
-          <div className="space-y-4">
-            <div className="border rounded-lg p-4">
-              <h3 className="font-bold mb-2">🔄 Backup</h3>
-              <div className="flex gap-2">
-                <button onClick={exp} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 flex items-center gap-2">
-                  <Download size={18} /> Fazer Backup
-                </button>
-                <label className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 cursor-pointer flex items-center gap-2">
-                  <Upload size={18} /> Importar
-                  <input type="file" className="hidden" onChange={imp} accept=".json" />
-                </label>
+                )}
               </div>
-            </div>
-            
-            <div className="border rounded-lg p-4">
-              <h3 className="font-bold mb-2">🗺️ Importar KML</h3>
-              <label className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 cursor-pointer inline-flex items-center gap-2">
-                <Upload size={18} /> Selecionar KML
-                <input type="file" className="hidden" onChange={hKML} accept=".kml" />
-              </label>
-            </div>
-            
-            <div className="border rounded-lg p-4">
-              <h3 className="font-bold mb-2">⚠️ Limpar Dados</h3>
-              <p className="text-sm text-gray-600 mb-2">Esta ação remove todos os dados da fazenda atual</p>
-              <button onClick={() => {
-                if (confirm('Tem certeza? Isso irá apagar todos os dados desta fazenda.')) {
-                  setData({
-                    ...data,
-                    mod: data.mod.filter(m => m.fazendaId !== data.fa),
-                    piq: data.piq.filter(p => p.fazendaId !== data.fa),
-                    lot: data.lot.filter(l => l.fazendaId !== data.fa),
-                    his: data.his.filter(h => h.fazendaId !== data.fa),
-                    faz: data.faz.map(f => f.id === data.fa ? { ...f, areaTotal: 0, areaUtil: 0, areaPreservacao: 0 } : f)
-                  });
-                  setUi({ ...ui, st: '✅ Itens apagados com sucesso.' });
-                  setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-                }
-              }} className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">Limpar Fazenda</button>
-            </div>
-          </div>
-        </div> : null}
-    </div>
+            )}
+          </main>
 
-    {ui.modal === 'fazenda' && <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg p-4 max-w-md w-full">
-        <div className="flex justify-between items-center mb-3">
-          <h2 className="text-lg font-bold">{ui.sel ? 'Editar Fazenda' : 'Nova Fazenda'}</h2>
-          <button onClick={() => setUi({ ...ui, modal: null, sel: null })} className="text-gray-500 hover:text-gray-700">
-            <X size={20} />
-          </button>
-        </div>
-        <div className="space-y-3">
-          <input type="text" placeholder="Nome da fazenda" value={ui.fd.nome || ''} onChange={e => setUi({ ...ui, fd: { ...ui.fd, nome: e.target.value } })} className="w-full border rounded px-3 py-2" />
-          <input type="text" placeholder="Localização" value={ui.fd.localizacao || ''} onChange={e => setUi({ ...ui, fd: { ...ui.fd, localizacao: e.target.value } })} className="w-full border rounded px-3 py-2" />
-          <div className="flex gap-2">
-            <input type="number" placeholder="Área Total (ha)" value={ui.fd.areaTotal || ''} onChange={e => setUi({ ...ui, fd: { ...ui.fd, areaTotal: e.target.value } })} className="w-full border rounded px-3 py-2" />
-            <input type="number" placeholder="Área Preservação (ha)" value={ui.fd.areaPreservacao || ''} onChange={e => setUi({ ...ui, fd: { ...ui.fd, areaPreservacao: e.target.value } })} className="w-full border rounded px-3 py-2" />
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => {
-              if (!ui.fd.nome) {
-                setUi({ ...ui, st: '❌ Preencha todos os campos obrigatórios para continuar.' });
-                setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-                return;
-              }
-              if (ui.sel) {
-                setData({ ...data, faz: data.faz.map(f => f.id === ui.sel.id ? { ...f, ...ui.fd, areaUtil: (parseFloat(ui.fd.areaTotal || 0) - parseFloat(ui.fd.areaPreservacao || 0)).toFixed(2) } : f) });
-              } else {
-                setData({ ...data, faz: [...data.faz, { ...ui.fd, id: gid(), areaUtil: (parseFloat(ui.fd.areaTotal || 0) - parseFloat(ui.fd.areaPreservacao || 0)).toFixed(2) }] });
-              }
-              setUi({ ...ui, modal: null, sel: null, st: ui.sel ? '✅ Fazenda atualizada com sucesso.' : '✅ Fazenda criada com sucesso.' });
-              setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-            }} className="flex-1 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">{ui.sel ? 'Atualizar' : 'Criar'}</button>
-          </div>
-        </div>
-      </div>
-    </div>}
-
-    {ui.modal === 'trocar-fazenda' && <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg p-4 max-w-md w-full">
-        <div className="flex justify-between items-center mb-3">
-          <h2 className="text-lg font-bold">Selecionar Fazenda</h2>
-          <button onClick={() => setUi({ ...ui, modal: null })} className="text-gray-500 hover:text-gray-700">
-            <X size={20} />
-          </button>
-        </div>
-        {data.faz.map(f => <button key={f.id} onClick={() => { setData({ ...data, fa: f.id }); setUi({ ...ui, modal: null, tab: 'dashboard' }); }} className="w-full text-left border rounded px-3 py-2 mb-2 hover:border-green-500">
-          <div className="font-semibold">{f.nome}</div>
-          <div className="text-xs text-gray-500">{f.localizacao || 'Sem localização'}</div>
-        </button>)}
-      </div>
-    </div>}
-
-    {ui.modal === 'modulo' && <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg p-4 max-w-md w-full">
-        <div className="flex justify-between items-center mb-3">
-          <h2 className="text-lg font-bold">{ui.sel ? 'Editar Módulo' : 'Novo Módulo'}</h2>
-          <button onClick={() => setUi({ ...ui, modal: null, sel: null })} className="text-gray-500 hover:text-gray-700">
-            <X size={20} />
-          </button>
-        </div>
-        <div className="space-y-3">
-          <input type="text" placeholder="Nome do módulo" value={ui.fd.nome || ''} onChange={e => setUi({ ...ui, fd: { ...ui.fd, nome: e.target.value } })} className="w-full border rounded px-3 py-2" />
-          <div className="flex gap-2">
-            <button onClick={() => {
-              if (!ui.fd.nome) {
-                setUi({ ...ui, st: '❌ Preencha todos os campos obrigatórios para continuar.' });
-                setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-                return;
-              }
-              if (ui.sel) {
-                setData({ ...data, mod: data.mod.map(m => m.id === ui.sel.id ? { ...m, ...ui.fd } : m) });
-                setUi({ ...ui, st: '✅ Módulo atualizado com sucesso.' });
-              } else {
-                setData({ ...data, mod: [...data.mod, { ...ui.fd, id: gid(), fazendaId: data.fa }] });
-                setUi({ ...ui, st: '✅ Módulo criado com sucesso.' });
-              }
-              setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-              setUi({ ...ui, modal: null, sel: null });
-            }} className="flex-1 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">{ui.sel ? 'Atualizar' : 'Criar'}</button>
-          </div>
-        </div>
-      </div>
-    </div>}
-
-    {ui.modal === 'piquete' && <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg p-4 max-w-md w-full">
-        <div className="flex justify-between items-center mb-3">
-          <h2 className="text-lg font-bold">{ui.sel ? 'Editar Piquete' : 'Novo Piquete'}</h2>
-          <button onClick={() => setUi({ ...ui, modal: null, sel: null })} className="text-gray-500 hover:text-gray-700">
-            <X size={20} />
-          </button>
-        </div>
-        <div className="space-y-3">
-          <input type="text" placeholder="Nome do piquete" value={ui.fd.nome || ''} onChange={e => setUi({ ...ui, fd: { ...ui.fd, nome: e.target.value } })} className="w-full border rounded px-3 py-2" />
-          <input type="number" placeholder="Área (ha)" value={ui.fd.area || ''} onChange={e => setUi({ ...ui, fd: { ...ui.fd, area: e.target.value } })} className="w-full border rounded px-3 py-2" />
-          <select value={ui.fd.moduloId || ''} onChange={e => setUi({ ...ui, fd: { ...ui.fd, moduloId: e.target.value || null } })} className="w-full border rounded px-3 py-2">
-            <option value="">Sem módulo</option>
-            {modF.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
-          </select>
-          <div className="flex gap-2">
-            <button onClick={() => {
-              if (!ui.fd.nome || !ui.fd.area) {
-                setUi({ ...ui, st: '❌ Preencha todos os campos obrigatórios para continuar.' });
-                setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-                return;
-              }
-              if (ui.sel) {
-                setData({ ...data, piq: data.piq.map(p => p.id === ui.sel.id ? { ...p, ...ui.fd } : p) });
-                setUi({ ...ui, st: '✅ Piquete atualizado com sucesso.' });
-              } else {
-                setData({ ...data, piq: [...data.piq, { ...ui.fd, id: gid(), fazendaId: data.fa, dataCriacao: new Date().toISOString(), loteAtualId: null, ehReserva: false }] });
-                setUi({ ...ui, st: '✅ Piquete criado com sucesso.' });
-              }
-              setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-              setUi({ ...ui, modal: null, sel: null });
-            }} className="flex-1 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">{ui.sel ? 'Atualizar' : 'Criar'}</button>
-          </div>
-        </div>
-      </div>
-    </div>}
-
-    {ui.modal === 'lote' && <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg p-4 max-w-md w-full">
-        <div className="flex justify-between items-center mb-3">
-          <h2 className="text-lg font-bold">{ui.sel ? 'Editar Lote' : 'Novo Lote'}</h2>
-          <button onClick={() => setUi({ ...ui, modal: null, sel: null })} className="text-gray-500 hover:text-gray-700">
-            <X size={20} />
-          </button>
-        </div>
-        <div className="space-y-3">
-          <input type="text" placeholder="Nome do lote" value={ui.fd.nome || ''} onChange={e => setUi({ ...ui, fd: { ...ui.fd, nome: e.target.value } })} className="w-full border rounded px-3 py-2" />
-          <input type="text" placeholder="Categoria" value={ui.fd.categoria || ''} onChange={e => setUi({ ...ui, fd: { ...ui.fd, categoria: e.target.value } })} className="w-full border rounded px-3 py-2" />
-          <input type="number" placeholder="Quantidade" value={ui.fd.quantidade || ''} onChange={e => setUi({ ...ui, fd: { ...ui.fd, quantidade: e.target.value } })} className="w-full border rounded px-3 py-2" />
-          <input type="number" placeholder="Peso médio (kg)" value={ui.fd.pesoMedio || ''} onChange={e => setUi({ ...ui, fd: { ...ui.fd, pesoMedio: e.target.value } })} className="w-full border rounded px-3 py-2" />
-          <div className="flex gap-2">
-            <button onClick={() => {
-              if (!ui.fd.nome || !ui.fd.categoria || !ui.fd.quantidade || !ui.fd.pesoMedio) {
-                setUi({ ...ui, st: '❌ Preencha todos os campos obrigatórios para continuar.' });
-                setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-                return;
-              }
-              const totalUA = calcUA(ui.fd.pesoMedio, ui.fd.quantidade);
-              if (ui.sel) {
-                setData({ ...data, lot: data.lot.map(l => l.id === ui.sel.id ? { ...l, ...ui.fd, totalUA } : l) });
-                setUi({ ...ui, st: '✅ Lote atualizado com sucesso.' });
-              } else {
-                setData({ ...data, lot: [...data.lot, { ...ui.fd, id: gid(), fazendaId: data.fa, status: 'livre', totalUA }] });
-                setUi({ ...ui, st: '✅ Lote criado com sucesso.' });
-              }
-              setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-              setUi({ ...ui, modal: null, sel: null });
-            }} className="flex-1 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">{ui.sel ? 'Atualizar' : 'Criar'}</button>
-          </div>
-        </div>
-      </div>
-    </div>}
-
-    {ui.modal === 'piquete-info' && ui.sel && (() => {
-      const lote = ui.sel.loteAtualId ? lotF.find(l => l.id === ui.sel.loteAtualId) : null;
-      const modulo = ui.sel.moduloId ? modF.find(m => m.id === ui.sel.moduloId) : null;
-      const outrosPiquetes = piqF.filter(p => p.id !== ui.sel.id && !p.ehReserva);
-      
-      return <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-lg p-4 max-w-md w-full max-h-[90vh] overflow-y-auto">
-          <div className="flex justify-between items-center mb-3">
-            <h2 className="text-lg font-bold">{ui.sel.nome}</h2>
-            <button onClick={() => setUi({ ...ui, modal: null, sel: null, fd: {} })} className="text-gray-500 hover:text-gray-700">
-              <X size={20} />
-            </button>
-          </div>
-          <div className="space-y-2 mb-4">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Área:</span>
-              <span className="font-bold">{ui.sel.area} ha</span>
-            </div>
-            {modulo && <div className="flex justify-between">
-              <span className="text-gray-600">Módulo:</span>
-              <span className="font-bold text-purple-600">{modulo.nome}</span>
-            </div>}
-            {lote && <>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Lote:</span>
-                <span className="font-bold text-green-600">{lote.nome}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Animais:</span>
-                <span className="font-bold">{lote.quantidade}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Total UA:</span>
-                <span className="font-bold">{lote.totalUA}</span>
-              </div>
-            </>}
-            <div className="flex justify-between">
-              <span className="text-gray-600">Status:</span>
-              <span className={`font-bold ${lote ? 'text-green-600' : 'text-blue-600'}`}>
-                {lote ? '✅ Ocupado' : '🔵 Livre'}
-              </span>
-            </div>
-            {!lote && <div className="text-sm text-gray-500">Dias vazio: {calcDias(ui.sel.dataSaida || ui.sel.dataCriacao)}</div>}
-          </div>
-
-          {lote && <div className="mb-4">
-            <button onClick={() => {
-              const hist = {
-                id: gid(),
-                fazendaId: data.fa,
-                tipo: 'saida',
-                loteId: lote.id,
-                piqueteId: ui.sel.id,
-                data: new Date().toISOString(),
-                descricao: `Lote ${lote.nome} removido de ${ui.sel.nome}`
-              };
-              setData({
-                ...data,
-                piq: data.piq.map(p => p.id === ui.sel.id ? { ...p, loteAtualId: null, dataSaida: new Date().toISOString() } : p),
-                lot: data.lot.map(l => l.id === lote.id ? { ...l, status: 'livre', piqueteAtual: null } : l),
-                his: [...data.his, hist]
-              });
-              setUi({ ...ui, modal: null, sel: null, st: '✅ Lote removido do piquete com sucesso.' });
-              setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-            }} className="w-full bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600 font-semibold mb-2 flex items-center justify-center gap-2">
-              <ArrowRightLeft size={18} />
-              Retirar Lote
-            </button>
-
-            <p className="text-sm font-semibold text-gray-700 mb-2">🔄 Trocar para outro piquete:</p>
-            {outrosPiquetes.filter(p => !p.loteAtualId).map(p => {
-              const pMod = p.moduloId ? modF.find(m => m.id === p.moduloId) : null;
-              return <button key={p.id} onClick={() => {
-                const hist = {
-                  id: gid(),
-                  fazendaId: data.fa,
-                  tipo: 'troca',
-                  loteId: lote.id,
-                  piqueteId: p.id,
-                  piqueteAnteriorId: ui.sel.id,
-                  data: new Date().toISOString(),
-                  descricao: `Lote ${lote.nome} movido de ${ui.sel.nome} para ${p.nome}${pMod ? ` (${pMod.nome})` : ''}`
-                };
-                setData({
-                  ...data,
-                  piq: data.piq.map(pq => 
-                    pq.id === ui.sel.id ? { ...pq, loteAtualId: null, dataSaida: new Date().toISOString() } :
-                    pq.id === p.id ? { ...pq, loteAtualId: lote.id, dataEntrada: new Date().toISOString() } : pq
-                  ),
-                  lot: data.lot.map(l => l.id === lote.id ? { ...l, piqueteAtual: p.id } : l),
-                  his: [...data.his, hist]
-                });
-                setUi({ ...ui, modal: null, sel: null, st: '✅ Gado movido com sucesso.' });
-                setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-              }} className="w-full bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 text-sm mb-2 flex items-center justify-between">
-                <span>{p.nome} {pMod && `(${pMod.nome})`}</span>
-                <span className="text-xs">{p.area}ha</span>
-              </button>;
-            })}
-          </div>}
-
-          {!lote && <div>
-            <p className="text-sm font-semibold text-gray-700 mb-2">🐄 Alocar lote:</p>
-            {lotF.filter(l => l.status === 'livre').length === 0 ? <p className="text-sm text-gray-500 italic">Nenhum lote disponível</p> :
-              lotF.filter(l => l.status === 'livre').map(l => <button key={l.id} onClick={() => {
-                const hist = {
-                  id: gid(),
-                  fazendaId: data.fa,
-                  tipo: 'entrada',
-                  loteId: l.id,
-                  piqueteId: ui.sel.id,
-                  data: new Date().toISOString(),
-                  descricao: `Lote ${l.nome} alocado em ${ui.sel.nome}`
-                };
-                setData({
-                  ...data,
-                  piq: data.piq.map(p => p.id === ui.sel.id ? { ...p, loteAtualId: l.id, dataEntrada: new Date().toISOString() } : p),
-                  lot: data.lot.map(lo => lo.id === l.id ? { ...lo, status: 'alocado', piqueteAtual: ui.sel.id } : lo),
-                  his: [...data.his, hist]
-                });
-                setUi({ ...ui, modal: null, sel: null, st: '✅ Lote alocado com sucesso.' });
-                setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-              }} className="w-full bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700 text-sm mb-2 flex items-center justify-between">
-                <span>🐄 {l.nome}</span>
-                <span className="text-xs">{l.quantidade} cab | {l.totalUA} UA</span>
-              </button>)}
-          </div>}
-        </div>
-      </div>;
-    })()}
-
-    {ui.modal === 'troca-lote' && ui.sel && (() => {
-      const modulo = ui.sel.moduloId ? modF.find(m => m.id === ui.sel.moduloId) : null;
-      const lotesMesmoMod = modulo ? lotF.filter(l => l.piqueteAtual && piqF.find(p => p.id === l.piqueteAtual && p.moduloId === modulo.id && p.id !== ui.sel.id)) : [];
-      const lotesOutros = lotF.filter(l => l.piqueteAtual && (!modulo || piqF.find(p => p.id === l.piqueteAtual && p.moduloId !== modulo.id)));
-      const lotesLivres = lotF.filter(l => l.status === 'livre');
-      
-      return <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-lg p-4 max-w-md w-full max-h-[90vh] overflow-y-auto">
-          <div className="flex justify-between items-center mb-3">
-            <h2 className="text-lg font-bold">{ui.sel.nome} ({ui.sel.area}ha)</h2>
-            <button onClick={() => setUi({ ...ui, modal: null, sel: null, fd: {} })} className="text-gray-500 hover:text-gray-700">
-              <X size={20} />
-            </button>
-          </div>
-
-          {ui.sel.loteAtualId ? <>
-            {(() => {
-              const l = lotF.find(l => l.id === ui.sel.loteAtualId);
-              if (!l) return null;
-              return <div className="mb-4 p-3 bg-green-50 rounded">
-                <div className="font-bold text-green-800">Lote Atual: {l.nome}</div>
-                <div className="text-sm text-gray-600">{l.quantidade} cabeças | {l.totalUA} UA</div>
-              </div>;
-            })()}
-
-            <div className="mb-2">
-              <p className="text-sm font-semibold text-gray-700 mb-2">🔄 Trocar gado para outro piquete:</p>
-              {modulo && <p className="text-xs text-gray-600 mb-2">Piquetes do {modulo.nome}:</p>}
-              {modulo && lotesMesmoMod.length === 0 && <p className="text-sm text-gray-500 italic mb-2">Nenhum lote disponível neste módulo</p>}
-              {modulo && lotesMesmoMod.map(l => {
-                const piqAtual = piqF.find(p => p.id === l.piqueteAtual);
-                return <button key={l.id} onClick={() => {
-                  const hist = {
-                    id: gid(),
-                    fazendaId: data.fa,
-                    tipo: 'troca',
-                    loteId: ui.sel.loteAtualId,
-                    piqueteId: piqAtual.id,
-                    piqueteAnteriorId: ui.sel.id,
-                    data: new Date().toISOString(),
-                    descricao: `Lote ${l.nome} movido de ${ui.sel.nome} para ${piqAtual.nome}`
-                  };
-                  setData({
-                    ...data,
-                    piq: data.piq.map(p => 
-                      p.id === ui.sel.id ? { ...p, loteAtualId: null, dataSaida: new Date().toISOString() } :
-                      p.id === piqAtual.id ? { ...p, loteAtualId: ui.sel.loteAtualId, dataEntrada: new Date().toISOString() } : p
-                    ),
-                    lot: data.lot.map(lo => lo.id === ui.sel.loteAtualId ? { ...lo, piqueteAtual: piqAtual.id } : lo),
-                    his: [...data.his, hist]
-                  });
-                  setUi({ ...ui, modal: null, sel: null, st: '✅ Gado movido com sucesso.' });
-                  setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-                }} className="w-full bg-blue-500 text-white px-3 py-2 rounded hover:bg-blue-600 text-sm mb-2 flex items-center justify-between">
-                  <span>{piqAtual.nome}</span>
-                  <span className="text-xs">{piqAtual.area}ha</span>
-                </button>;
-              })}
-            </div>
-          </> : <>
-            <p className="text-sm font-semibold text-gray-700 mb-2">🐄 Alocar gado aqui:</p>
-            {modulo && lotesMesmoMod.length > 0 && <>
-              <p className="text-xs text-gray-600 mb-2">Lotes do {modulo.nome}:</p>
-              {lotesMesmoMod.map(l => {
-                const piqAtual = piqF.find(p => p.id === l.piqueteAtual);
-                return <button key={l.id} onClick={() => {
-                  const hist = {
-                    id: gid(),
-                    fazendaId: data.fa,
-                    tipo: 'troca',
-                    loteId: l.id,
-                    piqueteId: ui.sel.id,
-                    piqueteAnteriorId: l.piqueteAtual,
-                    data: new Date().toISOString(),
-                    descricao: `Lote ${l.nome} movido de ${piqAtual?.nome} para ${ui.sel.nome}`
-                  };
-                  setData({
-                    ...data,
-                    piq: data.piq.map(p => 
-                      p.id === l.piqueteAtual ? { ...p, loteAtualId: null, dataSaida: new Date().toISOString() } :
-                      p.id === ui.sel.id ? { ...p, loteAtualId: l.id, dataEntrada: new Date().toISOString() } : p
-                    ),
-                    lot: data.lot.map(lo => lo.id === l.id ? { ...lo, piqueteAtual: ui.sel.id } : lo),
-                    his: [...data.his, hist]
-                  });
-                  setUi({ ...ui, modal: null, sel: null, st: '✅ Gado alocado com sucesso.' });
-                  setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-                }} className="w-full bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700 text-sm mb-2 flex items-center justify-between">
-                  <span>🐄 {l.nome}</span>
-                  <span className="text-xs">{l.quantidade} cab → {piqAtual?.nome}</span>
-                </button>;
-              })}
-            </>}
-            
-            {lotesLivres.length > 0 && <>
-              <p className="text-xs text-gray-600 mb-2">Lotes livres:</p>
-              {lotesLivres.map(l => <button key={l.id} onClick={() => {
-                const hist = {
-                  id: gid(),
-                  fazendaId: data.fa,
-                  tipo: 'entrada',
-                  loteId: l.id,
-                  piqueteId: ui.sel.id,
-                  data: new Date().toISOString(),
-                  descricao: `Lote ${l.nome} alocado em ${ui.sel.nome}`
-                };
-                setData({
-                  ...data,
-                  piq: data.piq.map(p => p.id === ui.sel.id ? { ...p, loteAtualId: l.id, dataEntrada: new Date().toISOString() } : p),
-                  lot: data.lot.map(lo => lo.id === l.id ? { ...lo, status: 'alocado', piqueteAtual: ui.sel.id } : lo),
-                  his: [...data.his, hist]
-                });
-                setUi({ ...ui, modal: null, sel: null, st: '✅ Gado alocado com sucesso.' });
-                setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-              }} className="w-full bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700 text-sm mb-2 flex items-center justify-between">
-                <span>🐄 {l.nome}</span>
-                <span className="text-xs">{l.quantidade} cab | {l.totalUA} UA</span>
-              </button>)}
-            </>}
-            
-            {(lotesOutros.length > 0 || (modulo && lotesOutros.length > 0)) && <>
-              <button onClick={() => setUi({ ...ui, fd: { ...ui.fd, showOthers: !ui.fd.showOthers } })} className="w-full bg-gray-200 text-gray-700 px-3 py-2 rounded hover:bg-gray-300 text-sm mb-2 flex items-center justify-center gap-2">
-                {ui.fd.showOthers ? 'Ocultar outros módulos' : 'Trazer de outro módulo'}
-                {ui.fd.showOthers ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          {/* NAVEGAÇÃO GLASSMORPISM */}
+          <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md glass border border-white/50 rounded-[2.5rem] shadow-2xl p-2 flex justify-between items-center z-[100]">
+            {[
+              {id: 'dashboard', icon: '📊', label: 'Início'},
+              {id: 'mapa', icon: '🗺️', label: 'Mapa'},
+              {id: 'lotes', icon: '🐄', label: 'Lotes'},
+              {id: 'modulos', icon: '🏗️', label: 'Módulos'}
+            ].map(t => (
+              <button 
+                key={t.id} 
+                onClick={() => setUi({...ui, tab: t.id})}
+                className={`flex flex-col items-center justify-center w-16 h-16 rounded-full transition-all ${ui.tab === t.id ? 'bg-[#064e3b] text-white scale-110 shadow-lg' : 'text-gray-400'}`}
+              >
+                <span className="text-xl">{t.icon}</span>
+                <span className="text-[9px] font-black uppercase tracking-tighter">{t.label}</span>
               </button>
-              {ui.fd.showOthers && lotesOutros.map(l => {
-                const piqAtual = piqF.find(p => p.id === l.piqueteAtual);
-                const pMod = piqAtual?.moduloId ? modF.find(m => m.id === piqAtual.moduloId) : null;
-                return <button key={l.id} onClick={() => {
-                  const hist = {
-                    id: gid(),
-                    fazendaId: data.fa,
-                    tipo: 'troca',
-                    loteId: l.id,
-                    piqueteId: ui.sel.id,
-                    piqueteAnteriorId: l.piqueteAtual,
-                    data: new Date().toISOString(),
-                    descricao: `Lote ${l.nome} movido de ${piqAtual?.nome}${pMod ? ` (${pMod.nome})` : ''} para ${ui.sel.nome}`
-                  };
-                  setData({
-                    ...data,
-                    piq: data.piq.map(p => 
-                      p.id === l.piqueteAtual ? { ...p, loteAtualId: null, dataSaida: new Date().toISOString() } :
-                      p.id === ui.sel.id ? { ...p, loteAtualId: l.id, dataEntrada: new Date().toISOString() } : p
-                    ),
-                    lot: data.lot.map(lo => lo.id === l.id ? { ...lo, piqueteAtual: ui.sel.id } : lo),
-                    his: [...data.his, hist]
-                  });
-                  setUi({ ...ui, modal: null, sel: null, st: '✅ Gado alocado com sucesso.' });
-                  setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-                }} className="w-full bg-green-500 text-white px-3 py-2 rounded hover:bg-green-600 text-sm mb-2 flex items-center justify-between">
-                  <span>🐄 {l.nome} {pMod && `(${pMod.nome})`}</span>
-                  <span className="text-xs">{l.quantidade} cab → {piqAtual?.nome}</span>
-                </button>;
-              })}
-            </>}
-            
-            {lotesMesmoMod.length === 0 && lotesLivres.length === 0 && lotesOutros.length === 0 && <p className="text-sm text-gray-500 italic">Nenhum lote disponível</p>}
-          </>}
-
+            ))}
+          </nav>
         </div>
-      </div>;
-    })()}
+      );
+    }
 
-
-
-    {ui.modal === 'lote-info' && ui.sel && (() => {
-      const piqAtual = ui.sel.piqueteAtual ? piqF.find(p => p.id === ui.sel.piqueteAtual) : null;
-      const modulo = piqAtual?.moduloId ? modF.find(m => m.id === piqAtual.moduloId) : null;
-      const piqsMesmoMod = modulo ? piqF.filter(p => p.moduloId === modulo.id && !p.loteAtualId && p.id !== ui.sel.piqueteAtual && !p.ehReserva) : [];
-      const piqsOutros = piqF.filter(p => (!modulo || p.moduloId !== modulo.id) && !p.loteAtualId && p.id !== ui.sel.piqueteAtual && !p.ehReserva);
-      
-      return <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-lg p-4 max-w-md w-full max-h-[90vh] overflow-y-auto">
-          <div className="flex justify-between items-center mb-3">
-            <h2 className="text-lg font-bold">{ui.sel.nome}</h2>
-            <button onClick={() => setUi({ ...ui, modal: null, sel: null, fd: {} })} className="text-gray-500 hover:text-gray-700">
-              <X size={20} />
-            </button>
-          </div>
-          <div className="space-y-2 mb-4">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Categoria:</span>
-              <span className="font-bold">{ui.sel.categoria}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Quantidade:</span>
-              <span className="font-bold">{ui.sel.quantidade} cabeças</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Peso Médio:</span>
-              <span className="font-bold">{ui.sel.pesoMedio}kg</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Total UA:</span>
-              <span className="font-bold">{ui.sel.totalUA}</span>
-            </div>
-            {ui.sel.piqueteAtual && <>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Piquete Atual:</span>
-                <span className="font-bold text-green-600">{piqAtual?.nome}</span>
-              </div>
-              {modulo && <div className="flex justify-between">
-                <span className="text-gray-600">Módulo:</span>
-                <span className="font-bold text-purple-600">{modulo.nome}</span>
-              </div>}
-            </>}
-            <div className="flex justify-between">
-              <span className="text-gray-600">Status:</span>
-              <span className={`font-bold ${ui.sel.status === 'livre' ? 'text-yellow-600' : 'text-green-600'}`}>
-                {ui.sel.status === 'livre' ? '🟡 Livre' : '✅ Alocado'}
-              </span>
-            </div>
-          </div>
-
-          {ui.sel.status === 'alocado' && ui.sel.piqueteAtual && <>
-            <button onClick={() => {
-              const piq = piqF.find(p => p.id === ui.sel.piqueteAtual);
-              const hist = {
-                id: gid(),
-                fazendaId: data.fa,
-                tipo: 'saida',
-                loteId: ui.sel.id,
-                piqueteId: ui.sel.piqueteAtual,
-                data: new Date().toISOString(),
-                descricao: `Lote ${ui.sel.nome} removido de ${piq?.nome}`
-              };
-              setData({
-                ...data,
-                piq: data.piq.map(p => p.id === ui.sel.piqueteAtual ? { ...p, loteAtualId: null, dataSaida: new Date().toISOString() } : p),
-                lot: data.lot.map(l => l.id === ui.sel.id ? { ...l, status: 'livre', piqueteAtual: null } : l),
-                his: [...data.his, hist]
-              });
-              setUi({ ...ui, modal: null, sel: null, st: '✅ Lote removido do piquete com sucesso.' });
-              setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-            }} className="w-full bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600 font-semibold mb-2 flex items-center justify-center gap-2">
-              <ArrowRightLeft size={18} />
-              Retirar do Piquete
-            </button>
-
-            <div className="mb-2">
-              <p className="text-sm font-semibold text-gray-700 mb-2">🔄 Trocar para outro piquete:</p>
-              {modulo && <p className="text-xs text-gray-600 mb-2">📍 Piquetes do {modulo.nome}:</p>}
-              {modulo && piqsMesmoMod.length === 0 && <p className="text-sm text-gray-500 italic mb-2">Nenhum piquete vazio neste módulo</p>}
-              {modulo && piqsMesmoMod.map(p => <button key={p.id} onClick={() => {
-                const piqAntigo = piqF.find(pq => pq.id === ui.sel.piqueteAtual);
-                const hist = {
-                  id: gid(),
-                  fazendaId: data.fa,
-                  tipo: 'troca',
-                  loteId: ui.sel.id,
-                  piqueteId: p.id,
-                  piqueteAnteriorId: ui.sel.piqueteAtual,
-                  data: new Date().toISOString(),
-                  descricao: `Lote ${ui.sel.nome} movido de ${piqAntigo?.nome} para ${p.nome}`
-                };
-                setData({
-                  ...data,
-                  piq: data.piq.map(pq => 
-                    pq.id === ui.sel.piqueteAtual ? { ...pq, loteAtualId: null, dataSaida: new Date().toISOString() } :
-                    pq.id === p.id ? { ...pq, loteAtualId: ui.sel.id, dataEntrada: new Date().toISOString() } : pq
-                  ),
-                  lot: data.lot.map(l => l.id === ui.sel.id ? { ...l, piqueteAtual: p.id } : l),
-                  his: [...data.his, hist]
-                });
-                setUi({ ...ui, modal: null, sel: null, st: '✅ Gado movido com sucesso.' });
-                setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-              }} className="w-full bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 text-sm mb-2 flex items-center justify-between">
-                <span>{p.nome}</span>
-                <span className="text-xs">{p.area}ha ⚪ {calcDias(p.dataSaida || p.dataCriacao)}d</span>
-              </button>)}
-              
-              {piqsOutros.length > 0 && <>
-                <button onClick={() => setUi({ ...ui, fd: { ...ui.fd, showOthers: !ui.fd.showOthers } })} className="w-full bg-gray-200 text-gray-700 px-3 py-2 rounded hover:bg-gray-300 text-sm mb-2 flex items-center justify-center gap-2">
-                  {ui.fd.showOthers ? 'Ocultar outros módulos' : 'Ver outros módulos'}
-                  {ui.fd.showOthers ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </button>
-                {ui.fd.showOthers && piqsOutros.map(p => {
-                  const pMod = p.moduloId ? modF.find(m => m.id === p.moduloId) : null;
-                  return <button key={p.id} onClick={() => {
-                    const piqAntigo = piqF.find(pq => pq.id === ui.sel.piqueteAtual);
-                    const hist = {
-                      id: gid(),
-                      fazendaId: data.fa,
-                      tipo: 'troca',
-                      loteId: ui.sel.id,
-                      piqueteId: p.id,
-                      piqueteAnteriorId: ui.sel.piqueteAtual,
-                      data: new Date().toISOString(),
-                      descricao: `Lote ${ui.sel.nome} movido de ${piqAntigo?.nome} para ${p.nome}${pMod ? ` (${pMod.nome})` : ''}`
-                    };
-                    setData({
-                      ...data,
-                      piq: data.piq.map(pq => 
-                        pq.id === ui.sel.piqueteAtual ? { ...pq, loteAtualId: null, dataSaida: new Date().toISOString() } :
-                        pq.id === p.id ? { ...pq, loteAtualId: ui.sel.id, dataEntrada: new Date().toISOString() } : pq
-                      ),
-                      lot: data.lot.map(l => l.id === ui.sel.id ? { ...l, piqueteAtual: p.id } : l),
-                      his: [...data.his, hist]
-                    });
-                    setUi({ ...ui, modal: null, sel: null, st: '✅ Gado movido com sucesso.' });
-                    setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-                  }} className="w-full bg-blue-500 text-white px-3 py-2 rounded hover:bg-blue-600 text-sm mb-2 flex items-center justify-between">
-                    <span>{p.nome} {pMod && `(${pMod.nome})`}</span>
-                    <span className="text-xs">{p.area}ha</span>
-                  </button>;
-                })}
-              </>}
-            </div>
-          </>}
-
-          {ui.sel.status === 'livre' && <div className="mb-2">
-            <p className="text-sm font-semibold text-gray-700 mb-2">🐄 Alocar em piquete:</p>
-            {piqF.filter(p => !p.ehReserva && !p.loteAtualId).length === 0 ? <p className="text-sm text-gray-500 italic">Nenhum piquete disponível</p> :
-              piqF.filter(p => !p.ehReserva && !p.loteAtualId).map(p => {
-                const pMod = p.moduloId ? modF.find(m => m.id === p.moduloId) : null;
-                return <button key={p.id} onClick={() => {
-                  const hist = {
-                    id: gid(),
-                    fazendaId: data.fa,
-                    tipo: 'entrada',
-                    loteId: ui.sel.id,
-                    piqueteId: p.id,
-                    data: new Date().toISOString(),
-                    descricao: `Lote ${ui.sel.nome} alocado em ${p.nome}${pMod ? ` (${pMod.nome})` : ''}`
-                  };
-                  setData({
-                    ...data,
-                    piq: data.piq.map(pq => pq.id === p.id ? { ...pq, loteAtualId: ui.sel.id, dataEntrada: new Date().toISOString() } : pq),
-                    lot: data.lot.map(l => l.id === ui.sel.id ? { ...l, status: 'alocado', piqueteAtual: p.id } : l),
-                    his: [...data.his, hist]
-                  });
-                  setUi({ ...ui, modal: null, sel: null, st: '✅ Lote alocado com sucesso.' });
-                  setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-                }} className="w-full bg-green-600 text-white px-3 py-2 rounded hover:bg-green-700 text-sm mb-2 flex items-center justify-between">
-                  <span>{p.nome} {pMod && `(${pMod.nome})`}</span>
-                  <span className="text-xs">{p.area}ha</span>
-                </button>;
-              })}
-          </div>}
-
-          <button onClick={() => {
-            const dataVenda = prompt('Data da venda (DD/MM/AAAA):');
-            if (!dataVenda) return;
-            if (ui.sel.status === 'alocado') {
-              const piq = piqF.find(p => p.id === ui.sel.piqueteAtual);
-              const hist = {
-                id: gid(),
-                fazendaId: data.fa,
-                tipo: 'venda',
-                loteId: ui.sel.id,
-                piqueteId: ui.sel.piqueteAtual,
-                data: new Date().toISOString(),
-                descricao: `Lote ${ui.sel.nome} vendido (estava em ${piq?.nome}) - Data: ${dataVenda}`
-              };
-              setData({
-                ...data,
-                piq: data.piq.map(p => p.id === ui.sel.piqueteAtual ? { ...p, loteAtualId: null, dataSaida: new Date().toISOString() } : p),
-                lot: data.lot.map(l => l.id === ui.sel.id ? { ...l, status: 'vendido', piqueteAtual: null, dataVenda } : l),
-                his: [...data.his, hist]
-              });
-            } else {
-              const hist = {
-                id: gid(),
-                fazendaId: data.fa,
-                tipo: 'venda',
-                loteId: ui.sel.id,
-                data: new Date().toISOString(),
-                descricao: `Lote ${ui.sel.nome} vendido - Data: ${dataVenda}`
-              };
-              setData({
-                ...data,
-                lot: data.lot.map(l => l.id === ui.sel.id ? { ...l, status: 'vendido', dataVenda } : l),
-                his: [...data.his, hist]
-              });
-            }
-            setUi({ ...ui, modal: null, sel: null, st: '✅ Lote vendido com sucesso.' });
-            setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-          }} className="w-full bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold mb-2 flex items-center justify-center gap-2">
-            <DollarSign size={18} />
-            Vender Lote
-          </button>
-
-          <button onClick={() => {
-            if (ui.sel.status === 'alocado') {
-              alert('Remova o lote do piquete antes de deletar');
-              return;
-            }
-            if (confirm('Deletar este lote permanentemente?')) {
-              setData({ ...data, lot: data.lot.filter(l => l.id !== ui.sel.id) });
-              setUi({ ...ui, modal: null, sel: null, st: '✅ Lote excluído com sucesso.' });
-              setTimeout(() => setUi(u => ({ ...u, st: '' })), 3000);
-            }
-          }} className="w-full bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 font-semibold">
-            Deletar Lote
-          </button>
-        </div>
-      </div>;
-    })()}
-
-  </div>;
-}
-
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
   </script>
 </body>
 </html>
