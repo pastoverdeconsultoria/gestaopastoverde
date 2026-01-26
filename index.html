@@ -33,128 +33,153 @@ const calcArea = c => {
 };
 
 function App() {
-    const [data, setData] = useState({ faz: [], fa: null, mod: [], piq: [], lot: [], his: [], mb: null });
-    const [ui, setUi] = useState({ tab: 'mapa' });
-    const [tempNome, setTempNome] = useState('');
+    const [data, setData] = useState({ faz: [], fa: null, mod: [], piq: [], lot: [], mb: null });
+    const [ui, setUi] = useState({ tab: 'mapa', zm: 1, pn: { x: 0, y: 0 }, tempNome: '' });
 
     useEffect(() => {
-        const s = localStorage.getItem('pastureSystem');
-        if (s) { try { setData(JSON.parse(s)); } catch (e) { } }
+        const s = localStorage.getItem('pastureProData');
+        if (s) { try { setData(JSON.parse(s)); } catch (e) {} }
     }, []);
 
     useEffect(() => {
-        localStorage.setItem('pastureSystem', JSON.stringify(data));
+        localStorage.setItem('pastureProData', JSON.stringify(data));
     }, [data]);
 
-    const cadastrarFazenda = () => {
-        if(!tempNome) return;
-        const id = gid();
-        setData({...data, faz:[...data.faz, {id, nome: tempNome}], fa: id});
-        setUi({ tab: 'mapa' });
+    const handleKML = e => {
+        const f = e.target.files[0];
+        if (!f) return;
+        const r = new FileReader();
+        r.onload = ev => {
+            const p = new DOMParser(), x = p.parseFromString(ev.target.result, 'text/xml');
+            const pl = Array.from(x.getElementsByTagName('Placemark'));
+            let minLat = 180, maxLat = -180, minLng = 180, maxLng = -180;
+            const np = pl.map(pm => {
+                const coStr = pm.getElementsByTagName('coordinates')[0]?.textContent.trim();
+                if (!coStr) return null;
+                const co = coStr.split(/\s+/).map(pr => {
+                    const [lng, lat] = pr.split(',').map(parseFloat);
+                    if(lng < minLng) minLng = lng; if(lng > maxLng) maxLng = lng;
+                    if(lat < minLat) minLat = lat; if(lat > maxLat) maxLat = lat;
+                    return [lng, lat];
+                });
+                return { id: gid(), fazendaId: data.fa, nome: pm.getElementsByTagName('name')[0]?.textContent || 'Área', area: calcArea(co), coordinates: co };
+            }).filter(p => p);
+            setData({ ...data, piq: [...data.piq, ...np], mb: { minLat, maxLat, minLng, maxLng, width: maxLng-minLng, height: maxLat-minLat } });
+        };
+        r.readAsText(f);
     };
 
-    const handleKML = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            try {
-                const parser = new DOMParser();
-                const xml = parser.parseFromString(event.target.result, 'text/xml');
-                const placemarks = Array.from(xml.getElementsByTagName('Placemark'));
-                
-                let minLat = 180, maxLat = -180, minLng = 180, maxLng = -180;
-                
-                const novosPiquetes = placemarks.map(pm => {
-                    const coStr = pm.getElementsByTagName('coordinates')[0]?.textContent.trim();
-                    if (!coStr) return null;
-
-                    const coords = coStr.split(/\s+/).map(pair => {
-                        const [lng, lat] = pair.split(',').map(parseFloat);
-                        if (lng < minLng) minLng = lng; if (lng > maxLng) maxLng = lng;
-                        if (lat < minLat) minLat = lat; if (lat > maxLat) maxLat = lat;
-                        return [lng, lat];
-                    });
-
-                    return {
-                        id: gid(),
-                        fazendaId: data.fa,
-                        nome: pm.getElementsByTagName('name')[0]?.textContent || 'Área s/ nome',
-                        area: calcArea(coords),
-                        coordinates: coords
-                    };
-                }).filter(p => p !== null);
-
-                setData(prev => ({
-                    ...prev,
-                    piq: [...prev.piq, ...novosPiquetes],
-                    mb: { minLat, maxLat, minLng, maxLng, width: maxLng - minLng, height: maxLat - minLat }
-                }));
-                
-                alert(`${novosPiquetes.length} áreas importadas com sucesso!`);
-            } catch (err) {
-                alert("Erro ao ler o ficheiro KML. Verifique o formato.");
-            }
-        };
-        reader.readAsText(file);
+    const proj = (lng, lat) => {
+        if (!data.mb) return [0, 0];
+        return [((lng - data.mb.minLng) / data.mb.width) * 800 + 100, ((data.mb.maxLat - lat) / data.mb.height) * 600 + 100];
     };
 
     const fazAt = data.faz.find(f => f.id === data.fa);
+    const piqF = data.piq.filter(p => p.fazendaId === data.fa);
+
+    if (!data.fa) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6">
+                <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border">
+                    <h2 className="text-2xl font-black text-green-800 mb-6 text-center uppercase tracking-tighter">Pasto Verde Pro</h2>
+                    <input type="text" placeholder="Nome da Fazenda" value={ui.tempNome} onChange={e => setUi({...ui, tempNome: e.target.value})} className="w-full p-4 border-2 rounded-xl mb-4 focus:border-green-600 outline-none font-bold" />
+                    <button onClick={() => { if(ui.tempNome) { const id=gid(); setData({...data, faz: [{id, nome: ui.tempNome}], fa: id}); } }} className="w-full bg-green-700 text-white py-4 rounded-xl font-black text-lg shadow-lg">CADASTRAR E COMEÇAR</button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen flex flex-col">
-            <header className="bg-[#15803d] text-white p-5 shadow-sm text-center">
-                <h1 className="text-xl font-bold uppercase tracking-tight">Pasto Verde Pro</h1>
+            <header className="bg-green-800 text-white p-4 font-black flex justify-between items-center shadow-md">
+                <span>PASTO VERDE PRO</span>
+                <span className="text-xs bg-green-900 px-3 py-1 rounded-full uppercase tracking-widest">{fazAt?.nome}</span>
             </header>
 
-            {!data.fa ? (
-                <main className="flex-1 p-6 flex flex-col items-center justify-center">
-                    <div className="bg-white p-8 rounded-2xl shadow-xl border w-full max-w-md">
-                        <h2 className="text-[#374151] text-xl font-bold mb-6 text-center">Nova Fazenda</h2>
-                        <input 
-                            type="text" 
-                            placeholder="Nome da Fazenda"
-                            value={tempNome}
-                            onChange={(e) => setTempNome(e.target.value)}
-                            className="w-full p-4 border-2 rounded-xl mb-4 focus:border-[#15803d] outline-none"
-                        />
-                        <button onClick={cadastrarFazenda} className="w-full bg-[#15803d] text-white py-4 rounded-xl font-bold text-lg shadow-md active:scale-95 transition-all">
-                            CADASTRAR E CONTINUAR
-                        </button>
-                    </div>
-                </main>
-            ) : (
-                <>
-                    <nav className="bg-white border-b flex overflow-x-auto no-scrollbar shadow-sm px-2">
-                        {['mapa', 'dashboard', 'piquetes', 'modulos', 'lotes'].map(t => (
-                            <button key={t} onClick={() => setUi({ tab: t })} className={`px-5 py-4 text-[11px] font-bold uppercase whitespace-nowrap transition-all ${ui.tab === t ? 'border-b-[3px] border-[#22c55e] text-[#15803d]' : 'text-gray-400'}`}>
-                                {t}
-                            </button>
-                        ))}
-                    </nav>
+            <nav className="bg-white border-b flex overflow-x-auto no-scrollbar shadow-sm">
+                {['mapa', 'dashboard', 'piquetes', 'modulos', 'lotes'].map(t => (
+                    <button key={t} onClick={() => setUi({...ui, tab: t})} className={`px-6 py-4 text-[10px] font-black uppercase tracking-widest transition-all ${ui.tab === t ? 'border-b-4 border-green-600 text-green-700' : 'text-gray-400'}`}>{t}</button>
+                ))}
+            </nav>
 
-                    <main className="flex-1 p-4">
-                        {ui.tab === 'mapa' && (
-                            <div className="bg-white p-6 rounded-2xl shadow-sm border text-center">
-                                <h2 className="text-lg font-bold text-gray-700 mb-4 uppercase">Importar Mapa</h2>
-                                <p className="text-gray-500 mb-6">Selecione o ficheiro KML da fazenda <strong>{fazAt.nome}</strong>:</p>
-                                <label className="block w-full bg-[#15803d] text-white py-8 rounded-2xl font-bold text-xl cursor-pointer shadow-lg active:scale-95 transition-all hover:bg-[#166534]">
-                                    SELECIONAR FICHEIRO KML
-                                    <input 
-                                        type="file" 
-                                        className="hidden" 
-                                        accept=".kml,application/vnd.google-earth.kml+xml" 
-                                        onChange={handleKML} 
-                                    />
-                                </label>
-                                <p className="mt-4 text-xs text-gray-400 font-bold uppercase tracking-widest">Fazenda Selecionada: {fazAt.nome}</p>
+            <main className="flex-1 p-4 overflow-hidden flex flex-col">
+                {ui.tab === 'mapa' && (
+                    <div className="flex-1 flex flex-col space-y-4">
+                        <div className="bg-white p-4 rounded-xl shadow-sm border flex justify-between items-center">
+                            <label className="cursor-pointer bg-green-700 text-white px-4 py-2 rounded-lg font-bold text-xs uppercase shadow-md">IMPORTAR KML<input type="file" className="hidden" accept=".kml" onChange={handleKML} /></label>
+                            <div className="flex gap-2 font-bold">
+                                <button onClick={() => setUi({...ui, zm: ui.zm + 0.2})} className="bg-gray-100 px-3 py-1 rounded border shadow-sm">+</button>
+                                <button onClick={() => setUi({...ui, zm: Math.max(0.1, ui.zm - 0.2)})} className="bg-gray-100 px-3 py-1 rounded border shadow-sm">-</button>
                             </div>
-                        )}
-                        {/* Se houver dados de mapa, pode-se adicionar aqui a visualização SVG */}
-                    </main>
-                </>
-            )}
+                        </div>
+                        <div className="flex-1 bg-white rounded-2xl shadow-inner border relative overflow-hidden bg-slate-50">
+                            <svg viewBox="0 0 1000 800" className="w-full h-full">
+                                <g transform={`translate(${ui.pn.x}, ${ui.pn.y}) scale(${ui.zm})`}>
+                                    {piqF.map(p => (
+                                        <path key={p.id} d={p.coordinates.map((c, i) => `${i===0?'M':'L'} ${proj(c[0], c[1]).join(' ')}`).join(' ') + ' Z'} fill="#dcfce7" stroke="#166534" strokeWidth="1" />
+                                    ))}
+                                </g>
+                            </svg>
+                        </div>
+                    </div>
+                )}
+
+                {ui.tab === 'piquetes' && (
+                    <div className="bg-white rounded-xl shadow overflow-hidden border">
+                        <table className="w-full text-left text-xs">
+                            <thead className="bg-gray-50 border-b font-black uppercase">
+                                <tr><th className="p-4">Piquete</th><th className="p-4 text-right">Área (ha)</th></tr>
+                            </thead>
+                            <tbody className="divide-y font-bold">
+                                {piqF.map(p => (<tr key={p.id}><td className="p-4 uppercase">{p.nome}</td><td className="p-4 text-right">{p.area} ha</td></tr>))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                {ui.tab === 'modulos' && (
+                    <div className="space-y-4">
+                        <button onClick={() => {const n=prompt("Nome do Módulo:"); if(n) setData({...data, mod:[...data.mod, {id:gid(), fId:data.fa, nome:n}]})}} className="bg-green-700 text-white p-4 rounded-xl font-bold w-full shadow-md uppercase">+ ADICIONAR MÓDULO</button>
+                        <div className="grid gap-2">
+                            {data.mod.filter(m => m.fId === data.fa).map(m => (
+                                <div key={m.id} className="bg-white p-4 rounded-xl border-l-4 border-green-600 font-bold shadow-sm uppercase">{m.nome}</div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {ui.tab === 'lotes' && (
+                    <div className="space-y-4">
+                        <button onClick={() => {
+                            const n=prompt("Nome do Lote:");
+                            const q=prompt("Quantidade de Cabeças:");
+                            const p=prompt("Peso Médio (kg):");
+                            if(n) setData({...data, lot:[...data.lot, {id:gid(), fId:data.fa, nome:n, qtd:q, peso:p}]})
+                        }} className="bg-blue-700 text-white p-4 rounded-xl font-bold w-full shadow-md uppercase">+ NOVO LOTE</button>
+                        <div className="grid gap-2">
+                            {data.lot.filter(l => l.fId === data.fa).map(l => (
+                                <div key={l.id} className="bg-white p-4 rounded-xl border-l-4 border-blue-600 shadow-sm flex justify-between">
+                                    <span className="font-bold uppercase">{l.nome}</span>
+                                    <span className="text-gray-500 font-bold">{l.qtd} cab | {l.peso} kg</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {ui.tab === 'dashboard' && (
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-l-4 border-green-600">
+                            <p className="text-[10px] font-black text-gray-400 uppercase">Área Total</p>
+                            <p className="text-xl font-black">{piqF.reduce((s,p)=>s+parseFloat(p.area),0).toFixed(2)} ha</p>
+                        </div>
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-l-4 border-blue-600">
+                            <p className="text-[10px] font-black text-gray-400 uppercase">Piquetes</p>
+                            <p className="text-xl font-black">{piqF.length}</p>
+                        </div>
+                    </div>
+                )}
+            </main>
         </div>
     );
 }
