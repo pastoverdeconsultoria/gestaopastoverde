@@ -12,7 +12,6 @@
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
     body { font-family: 'Inter', sans-serif; background: #f1f5f9; }
     .map-container { background: #cbd5e1; border-radius: 24px; position: relative; overflow: hidden; height: 500px; border: 4px solid white; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); }
-    .tab-nav { background: rgba(255,255,255,0.8); backdrop-filter: blur(10px); border-top: 1px solid #e2e8f0; }
   </style>
 </head>
 <body>
@@ -21,7 +20,10 @@
   <script type="text/babel">
     const { useState, useEffect } = React;
 
-    // ÍCONE DE BOI DE CORTE (Silhueta Robusta)
+    // PALETAS DE CORES AUTOMÁTICAS
+    const CORES_LOTES = ["#fbbf24", "#3b82f6", "#ef4444", "#a855f7", "#f97316", "#06b6d4", "#ec4899"];
+    const CORES_MODULOS = ["#475569", "#1e293b", "#334155", "#0f172a", "#52525b", "#3f3f46"];
+
     const BoiCorteIcon = ({ color = "#000", size = 28 }) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill={color} xmlns="http://www.w3.org/2000/svg">
         <path d="M22,11C22,10.1 21.5,9.2 20.7,8.7L19,7.7V6C19,5.4 18.6,5 18,5H16C15.4,5 15,5.4 15,6V6.3L13.5,5.5C12.6,5 11.4,5 10.5,5.5L4,9C2.8,9.7 2,11 2,12.4V14C2,15.1 2.9,16 4,16H5V18C5,18.6 5.4,19 6,19H8C8.6,19 9,18.6 9,18V16H15V18C15,18.6 15.4,19 16,19H18C18.6,19 19,18.6 19,18V16H20C21.1,16 22,15.1 22,14V11Z" />
@@ -30,7 +32,6 @@
 
     const gid = () => `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
     
-    // CÁLCULO DE ÁREA
     const calcArea = c => {
       if (!c || c.length < 3) return 0;
       let a = 0; const n = c.length, fl = Math.cos(c[0][1] * Math.PI / 180);
@@ -45,12 +46,12 @@
 
     function App() {
       const [data, setData] = useState(() => {
-        const saved = localStorage.getItem('pv_pro_v1.1');
+        const saved = localStorage.getItem('pv_pro_v1.3');
         return saved ? JSON.parse(saved) : { faz: [], fa: null, piq: [], lot: [], mod: [], mb: null };
       });
       const [ui, setUi] = useState({ tab: 'dashboard', sel: null });
 
-      useEffect(() => { localStorage.setItem('pv_pro_v1.1', JSON.stringify(data)); }, [data]);
+      useEffect(() => { localStorage.setItem('pv_pro_v1.3', JSON.stringify(data)); }, [data]);
 
       const piquetes = data.piq.filter(p => p.fazendaId === data.fa);
       const lotes = data.lot.filter(l => l.fazendaId === data.fa);
@@ -70,7 +71,6 @@
           const xml = parser.parseFromString(event.target.result, "text/xml");
           const placemarks = Array.from(xml.getElementsByTagName('Placemark'));
           let minLat = 180, maxLat = -180, minLng = 180, maxLng = -180;
-          
           const novos = placemarks.map(p => {
             const coordsStr = p.getElementsByTagName('coordinates')[0]?.textContent.trim();
             const coords = coordsStr.split(/\s+/).map(line => {
@@ -87,33 +87,31 @@
       };
 
       return (
-        <div className="max-w-md mx-auto min-h-screen bg-slate-50 relative pb-24">
-          {/* HEADER */}
+        <div className="max-w-md mx-auto min-h-screen bg-slate-50 relative pb-24 shadow-xl">
           <header className="bg-emerald-900 text-white p-6 rounded-b-3xl shadow-lg">
             <h1 className="text-xl font-black tracking-tighter italic">PASTO VERDE <span className="text-emerald-400">PRO</span></h1>
-            <p className="text-[10px] opacity-60 font-bold uppercase tracking-widest">Controle de Pastejo</p>
           </header>
 
           <main className="p-4">
             {!data.fa ? (
               <div className="mt-10 space-y-4">
                 {data.faz.map(f => (
-                  <button key={f.id} onClick={() => setData({...data, fa: f.id})} className="w-full bg-white p-5 rounded-2xl shadow-sm font-bold text-slate-700 flex justify-between">
+                  <button key={f.id} onClick={() => setData({...data, fa: f.id})} className="w-full bg-white p-5 rounded-2xl shadow-sm font-bold text-slate-700 flex justify-between uppercase">
                     {f.nome} <span>→</span>
                   </button>
                 ))}
-                <button onClick={() => {const n = prompt("Nome da Fazenda:"); if(n) setData({...data, faz:[...data.faz, {id:gid(), nome:n}]})}} className="w-full border-2 border-dashed border-slate-300 p-5 rounded-2xl text-slate-400 font-bold">+ Adicionar Fazenda</button>
+                <button onClick={() => {const n = prompt("Nome da Fazenda:"); if(n) setData({...data, faz:[...data.faz, {id:gid(), nome:n}]})}} className="w-full border-2 border-dashed border-slate-300 p-5 rounded-2xl text-slate-400 font-bold uppercase">+ Nova Fazenda</button>
               </div>
             ) : (
               <div className="space-y-4">
                 {ui.tab === 'dashboard' && (
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-3 animate-in fade-in">
                     <div className="bg-white p-4 rounded-2xl shadow-sm border-b-4 border-emerald-500">
-                      <p className="text-[10px] font-bold text-slate-400">PIQUETES</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Piquetes</p>
                       <p className="text-2xl font-black">{piquetes.length}</p>
                     </div>
                     <div className="bg-white p-4 rounded-2xl shadow-sm border-b-4 border-blue-500">
-                      <p className="text-[10px] font-bold text-slate-400">LOTES</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Lotes</p>
                       <p className="text-2xl font-black">{lotes.length}</p>
                     </div>
                   </div>
@@ -122,9 +120,9 @@
                 {ui.tab === 'mapa' && (
                   <div className="space-y-4">
                     <div className="flex justify-between items-center px-1">
-                      <h2 className="font-black text-slate-800 uppercase text-sm">Mapa Operacional</h2>
+                      <h2 className="font-black text-slate-800 uppercase text-xs tracking-wider">Monitoramento</h2>
                       <label className="bg-emerald-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold cursor-pointer">
-                         IMPORTAR KML <input type="file" accept=".kml" onChange={handleKML} className="hidden"/>
+                         KML <input type="file" accept=".kml" onChange={handleKML} className="hidden"/>
                       </label>
                     </div>
 
@@ -133,19 +131,9 @@
                         {piquetes.map(p => {
                           const lote = lotes.find(l => l.id === p.loteId);
                           const modulo = modulos.find(m => m.id === p.moduloId);
-                          
-                          // COR DA BORDA: Se houver lote no módulo, a borda é do lote. Senão, é a do módulo.
-                          let strokeColor = "#94a3b8"; 
-                          let strokeW = "1";
-                          
-                          if(modulo) {
-                            strokeColor = modulo.cor || "#64748b";
-                            strokeW = "3";
-                          }
-                          if(lote) {
-                            strokeColor = lote.cor;
-                            strokeW = "6";
-                          }
+                          let strokeColor = "#cbd5e1"; let strokeW = "1";
+                          if(modulo) { strokeColor = modulo.cor; strokeW = "3"; }
+                          if(lote) { strokeColor = lote.cor; strokeW = "6"; }
 
                           const path = p.coordinates.map((c, i) => `${i === 0 ? 'M' : 'L'} ${proj(c[0], c[1])[0]} ${proj(c[0], c[1])[1]}`).join(' ') + ' Z';
                           const cx = p.coordinates.reduce((s,c)=>s+c[0],0)/p.coordinates.length;
@@ -154,10 +142,10 @@
 
                           return (
                             <g key={p.id} onClick={() => setUi({...ui, sel: p})}>
-                              <path d={path} fill={p.loteId ? `${lote.cor}22` : "#f8fafc"} stroke={strokeColor} strokeWidth={strokeW} />
+                              <path d={path} fill={p.loteId ? `${lote.cor}22` : "#f8fafc"} stroke={strokeColor} strokeWidth={strokeW} className="transition-all cursor-pointer" />
                               {p.loteId && (
                                 <g transform={`translate(${px-14}, ${py-14})`}>
-                                  <circle cx="14" cy="14" r="16" fill="white" stroke={lote.cor} strokeWidth="2"/>
+                                  <circle cx="14" cy="14" r="16" fill="white" stroke={lote.cor} strokeWidth="2" />
                                   <g transform="translate(2,2)"><BoiCorteIcon color={lote.cor} size={24}/></g>
                                 </g>
                               )}
@@ -167,32 +155,31 @@
                       </svg>
 
                       {ui.sel && (
-                        <div className="absolute bottom-4 left-4 right-4 bg-white p-4 rounded-2xl shadow-2xl border-t-4 border-emerald-500 animate-in slide-in-from-bottom-5">
+                        <div className="absolute bottom-4 left-4 right-4 bg-white p-4 rounded-2xl shadow-2xl border-t-4 border-emerald-500 z-20">
                           <div className="flex justify-between items-center mb-3">
-                            <h4 className="font-black text-slate-800">{ui.sel.nome} <span className="text-xs text-slate-400 ml-2">{ui.sel.area}ha</span></h4>
-                            <button onClick={() => setUi({...ui, sel: null})} className="text-slate-300 font-bold">FECHAR</button>
+                            <h4 className="font-black text-slate-800 uppercase text-xs">{ui.sel.nome} - {ui.sel.area}ha</h4>
+                            <button onClick={() => setUi({...ui, sel: null})} className="text-slate-300 font-black px-2">X</button>
                           </div>
-                          <div className="grid grid-cols-2 gap-2 text-center">
-                            <div className="bg-slate-50 p-2 rounded-xl">
-                              <p className="text-[9px] font-bold text-slate-400">LOT. INSTANTÂNEA</p>
+                          <div className="grid grid-cols-2 gap-2 mb-3">
+                            <div className="bg-slate-50 p-2 rounded-xl text-center border border-slate-100">
+                              <p className="text-[8px] font-bold text-slate-400 uppercase">Instantânea</p>
                               <p className="font-black text-emerald-700">{ui.sel.loteId ? (lotes.find(l=>l.id===ui.sel.loteId).ua / ui.sel.area).toFixed(2) : "0.00"}</p>
                             </div>
-                            <div className="bg-slate-50 p-2 rounded-xl">
-                              <p className="text-[9px] font-bold text-slate-400">LOT. MENSAL</p>
-                              <p className="font-black text-slate-700">--</p>
+                            <div className="bg-slate-50 p-2 rounded-xl text-center border border-slate-100">
+                              <p className="text-[8px] font-bold text-slate-400 uppercase">Mensal</p>
+                              <p className="font-black text-slate-300">--</p>
                             </div>
                           </div>
                           <select 
-                            className="w-full mt-3 p-2 bg-slate-900 text-white rounded-xl text-xs font-bold"
+                            className="w-full p-3 bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase text-center"
                             value={ui.sel.loteId || ""}
                             onChange={(e) => {
                               const lid = e.target.value;
                               setData({...data, piq: data.piq.map(x => x.id === ui.sel.id ? {...x, loteId: lid || null} : (lid && x.loteId === lid ? {...x, loteId: null} : x))});
-                              setUi({...ui, sel: null});
                             }}
                           >
-                            <option value="">PIQUETE VAZIO</option>
-                            {lotes.map(l => <option key={l.id} value={l.id}>ENTRAR LOTE: {l.nome}</option>)}
+                            <option value="">Vazio / Em descanso</option>
+                            {lotes.map(l => <option key={l.id} value={l.id}>{l.nome}</option>)}
                           </select>
                         </div>
                       )}
@@ -201,42 +188,49 @@
                 )}
 
                 {ui.tab === 'lotes' && (
-                  <div className="space-y-4">
+                  <div className="space-y-4 animate-in slide-in-from-right">
                     <button onClick={() => {
                       const n = prompt("Nome do Lote:");
-                      const u = prompt("Total UA:");
-                      const c = prompt("Cor (ex: #ff0000):");
-                      if(n) setData({...data, lot: [...data.lot, {id: gid(), fazendaId: data.fa, nome: n, ua: u, cor: c || '#000'}]});
-                    }} className="w-full bg-emerald-700 text-white p-4 rounded-2xl font-bold">+ NOVO LOTE</button>
+                      const cat = prompt("Categoria (ex: Novilho):");
+                      const q = prompt("Qtd Cabeças:");
+                      const p = prompt("Peso Médio (kg):");
+                      if(n && q && p) {
+                        const calculatedUA = (parseFloat(q) * parseFloat(p)) / 450;
+                        const cor = CORES_LOTES[lotes.length % CORES_LOTES.length];
+                        setData({...data, lot: [...data.lot, {id: gid(), fazendaId: data.fa, nome: n, categoria: cat, qtd: q, peso: p, ua: calculatedUA.toFixed(2), cor}]});
+                      }
+                    }} className="w-full bg-emerald-700 text-white p-4 rounded-2xl font-black uppercase shadow-lg">+ Adicionar Lote</button>
                     {lotes.map(l => (
                       <div key={l.id} className="bg-white p-4 rounded-2xl shadow-sm flex justify-between items-center border-r-8" style={{borderColor: l.cor}}>
                         <div>
-                          <p className="font-black text-slate-800">{l.nome}</p>
-                          <p className="text-xs text-slate-400">{l.ua} UA total</p>
+                          <p className="font-black text-slate-800 uppercase text-sm">{l.nome} <span className="text-slate-400 font-normal">({l.categoria})</span></p>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase">{l.qtd} cab | {l.peso}kg | <span className="text-emerald-600">{l.ua} UA</span></p>
                         </div>
-                        <button onClick={() => setData({...data, lot: data.lot.filter(x => x.id !== l.id)})} className="text-red-300 font-bold">EXCLUIR</button>
+                        <button onClick={() => setData({...data, lot: data.lot.filter(x => x.id !== l.id)})} className="text-red-200 font-black text-xs px-2">X</button>
                       </div>
                     ))}
                   </div>
                 )}
 
                 {ui.tab === 'modulos' && (
-                  <div className="space-y-4">
+                  <div className="space-y-4 animate-in slide-in-from-right">
                     <button onClick={() => {
                       const n = prompt("Nome do Módulo:");
-                      const c = prompt("Cor do Módulo:");
-                      if(n) setData({...data, mod: [...data.mod, {id: gid(), fazendaId: data.fa, nome: n, cor: c || '#64748b'}]});
-                    }} className="w-full bg-slate-800 text-white p-4 rounded-2xl font-bold">+ NOVO MÓDULO</button>
+                      if(n) {
+                        const cor = CORES_MODULOS[modulos.length % CORES_MODULOS.length];
+                        setData({...data, mod: [...data.mod, {id: gid(), fazendaId: data.fa, nome: n, cor}]});
+                      }
+                    }} className="w-full bg-slate-800 text-white p-4 rounded-2xl font-black uppercase shadow-lg">+ Criar Módulo</button>
                     {modulos.map(m => (
                       <div key={m.id} className="bg-white p-4 rounded-2xl shadow-sm border-l-8" style={{borderColor: m.cor}}>
-                        <div className="flex justify-between mb-3">
-                          <p className="font-black text-slate-800">{m.nome}</p>
-                          <button onClick={() => setData({...data, mod: data.mod.filter(x => x.id !== m.id)})} className="text-red-300 text-xs">REMOVER</button>
+                        <div className="flex justify-between items-center mb-4">
+                          <p className="font-black text-slate-800 uppercase text-xs">{m.nome}</p>
+                          <button onClick={() => setData({...data, mod: data.mod.filter(x => x.id !== m.id)})} className="text-red-200 font-black text-xs uppercase">Remover</button>
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {piquetes.map(p => (
                             <button key={p.id} onClick={() => setData({...data, piq: data.piq.map(x => x.id === p.id ? {...x, moduloId: x.moduloId === m.id ? null : m.id} : x)})}
-                              className={`text-[9px] px-2 py-1 rounded-lg font-bold ${p.moduloId === m.id ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                              className={`text-[9px] px-2 py-2 rounded-lg font-black uppercase transition-all ${p.moduloId === m.id ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-400'}`}>
                               {p.nome}
                             </button>
                           ))}
@@ -249,16 +243,16 @@
             )}
           </main>
 
-          <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-slate-200 p-3 flex justify-around items-center z-50">
+          <nav className="fixed bottom-0 left-0 right-0 bg-white/95 border-t border-slate-200 p-4 flex justify-around items-center z-50 shadow-[0_-5px_20px_rgba(0,0,0,0.05)]">
             {[
-              {id: 'dashboard', label: 'Início', icon: '📊'},
+              {id: 'dashboard', label: 'Home', icon: '📊'},
               {id: 'mapa', label: 'Mapa', icon: '🗺️'},
               {id: 'lotes', label: 'Lotes', icon: '🐂'},
               {id: 'modulos', label: 'Módulos', icon: '📦'}
             ].map(t => (
-              <button key={t.id} onClick={() => setUi({...ui, tab: t.id})} className={`flex flex-col items-center transition-all ${ui.tab === t.id ? 'text-emerald-700 scale-110' : 'text-slate-400'}`}>
+              <button key={t.id} onClick={() => setUi({...ui, tab: t.id})} className={`flex flex-col items-center transition-all ${ui.tab === t.id ? 'text-emerald-700 scale-110' : 'text-slate-400 opacity-60'}`}>
                 <span className="text-xl">{t.icon}</span>
-                <span className="text-[9px] font-extrabold uppercase">{t.label}</span>
+                <span className="text-[8px] font-black uppercase mt-1">{t.label}</span>
               </button>
             ))}
           </nav>
