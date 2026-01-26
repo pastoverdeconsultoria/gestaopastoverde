@@ -3,37 +3,37 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-  <title>Pasto Verde Pro - Consultoria</title>
+  <title>Pasto Verde Pro</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
-    body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
-    .map-bg { background-color: #e2e8f0; background-image: radial-gradient(#cbd5e1 1px, transparent 1px); background-size: 20px 20px; }
-    .glass { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+    body { font-family: 'Inter', sans-serif; background: #f1f5f9; }
+    .map-container { background: #cbd5e1; border-radius: 24px; position: relative; overflow: hidden; height: 500px; border: 4px solid white; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); }
+    .tab-nav { background: rgba(255,255,255,0.8); backdrop-filter: blur(10px); border-top: 1px solid #e2e8f0; }
   </style>
 </head>
 <body>
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useMemo } = React;
+    const { useState, useEffect } = React;
 
-    // --- COMPONENTES VISUAIS ---
-    const TouroIcon = ({ color = "#000", size = 32 }) => (
+    // ÍCONE DE BOI DE CORTE (Silhueta Robusta)
+    const BoiCorteIcon = ({ color = "#000", size = 28 }) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill={color} xmlns="http://www.w3.org/2000/svg">
-        <path d="M21.5,10.5C21.5,9.12 20.38,8 19,8H17.82C17.17,5.69 15,4 12.5,4C10,4 7.83,5.69 7.18,8H6C4.62,8 3.5,9.12 3.5,10.5C3.5,11.5 4.1,12.36 4.96,12.75C5,15.68 7.32,18.05 10.25,18.23V20H8V22H16V20H13.75V18.23C16.68,18.05 19,15.68 19.04,12.75C19.9,12.36 20.5,11.5 20.5,10.5M12.5,6C13.88,6 15,7.12 15,8.5C15,9.88 13.88,11 12.5,11C11.12,11 10,9.88 10,8.5C10,7.12 11.12,6 12.5,6Z" />
+        <path d="M22,11C22,10.1 21.5,9.2 20.7,8.7L19,7.7V6C19,5.4 18.6,5 18,5H16C15.4,5 15,5.4 15,6V6.3L13.5,5.5C12.6,5 11.4,5 10.5,5.5L4,9C2.8,9.7 2,11 2,12.4V14C2,15.1 2.9,16 4,16H5V18C5,18.6 5.4,19 6,19H8C8.6,19 9,18.6 9,18V16H15V18C15,18.6 15.4,19 16,19H18C18.6,19 19,18.6 19,18V16H20C21.1,16 22,15.1 22,14V11Z" />
       </svg>
     );
 
-    // --- AUXILIARES ---
     const gid = () => `${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    
+    // CÁLCULO DE ÁREA
     const calcArea = c => {
       if (!c || c.length < 3) return 0;
-      let a = 0;
-      const n = c.length, fl = Math.cos(c[0][1] * Math.PI / 180);
+      let a = 0; const n = c.length, fl = Math.cos(c[0][1] * Math.PI / 180);
       for (let i = 0; i < n; i++) {
         const j = (i + 1) % n;
         const xi = c[i][0] * fl * 111320, yi = c[i][1] * 110540;
@@ -44,22 +44,18 @@
     };
 
     function App() {
-      // ESTADO INICIAL
       const [data, setData] = useState(() => {
-        const saved = localStorage.getItem('pasto_verde_pro');
+        const saved = localStorage.getItem('pv_pro_v1.1');
         return saved ? JSON.parse(saved) : { faz: [], fa: null, piq: [], lot: [], mod: [], mb: null };
       });
-      const [ui, setUi] = useState({ tab: 'dashboard', sel: null, modal: null });
+      const [ui, setUi] = useState({ tab: 'dashboard', sel: null });
 
-      useEffect(() => { localStorage.setItem('pasto_verde_pro', JSON.stringify(data)); }, [data]);
+      useEffect(() => { localStorage.setItem('pv_pro_v1.1', JSON.stringify(data)); }, [data]);
 
-      // DADOS FILTRADOS
-      const fazAt = data.faz.find(f => f.id === data.fa);
       const piquetes = data.piq.filter(p => p.fazendaId === data.fa);
       const lotes = data.lot.filter(l => l.fazendaId === data.fa);
       const modulos = data.mod.filter(m => m.fazendaId === data.fa);
 
-      // PROJEÇÃO DE MAPA
       const proj = (lng, lat) => {
         if (!data.mb) return [0, 0];
         const x = ((lng - data.mb.minLng) / data.mb.width) * 800 + 100;
@@ -67,7 +63,6 @@
         return [x, y];
       };
 
-      // MANEJO DE KML
       const handleKML = (e) => {
         const reader = new FileReader();
         reader.onload = (event) => {
@@ -84,181 +79,164 @@
               if(lat < minLat) minLat = lat; if(lat > maxLat) maxLat = lat;
               return [lng, lat];
             });
-            return { id: gid(), fazendaId: data.fa, nome: p.getElementsByTagName('name')[0]?.textContent || "Área", area: calcArea(coords), coordinates: coords, moduloId: null, loteId: null };
+            return { id: gid(), fazendaId: data.fa, nome: p.getElementsByTagName('name')[0]?.textContent || "Pasto", area: calcArea(coords), coordinates: coords, moduloId: null, loteId: null };
           });
-          
           setData(d => ({...d, piq: [...d.piq, ...novos], mb: {minLat, maxLat, minLng, maxLng, width: maxLng-minLng, height: maxLat-minLat}}));
         };
         reader.readAsText(e.target.files[0]);
       };
 
       return (
-        <div className="max-w-md mx-auto min-h-screen pb-24 relative shadow-2xl bg-white">
-          {/* HEADER PROFISSIONAL */}
-          <header className="bg-[#064e3b] text-white p-6 rounded-b-[2rem] shadow-lg">
-            <div className="flex justify-between items-center">
-              <div>
-                <h1 className="text-2xl font-extrabold tracking-tight">PASTO VERDE <span className="text-green-400">PRO</span></h1>
-                <p className="text-xs font-semibold opacity-70 uppercase tracking-widest">{fazAt?.nome || "Consultoria Líder"}</p>
-              </div>
-              <div className="bg-green-800/50 p-2 rounded-full"><TouroIcon color="#4ade80" size={24}/></div>
-            </div>
+        <div className="max-w-md mx-auto min-h-screen bg-slate-50 relative pb-24">
+          {/* HEADER */}
+          <header className="bg-emerald-900 text-white p-6 rounded-b-3xl shadow-lg">
+            <h1 className="text-xl font-black tracking-tighter italic">PASTO VERDE <span className="text-emerald-400">PRO</span></h1>
+            <p className="text-[10px] opacity-60 font-bold uppercase tracking-widest">Controle de Pastejo</p>
           </header>
 
           <main className="p-4">
             {!data.fa ? (
               <div className="mt-10 space-y-4">
-                <h2 className="text-center font-bold text-gray-400">SELECIONE UMA PROPRIEDADE</h2>
                 {data.faz.map(f => (
-                  <button key={f.id} onClick={() => setData({...data, fa: f.id})} className="w-full bg-white border-2 border-gray-100 p-5 rounded-2xl shadow-sm text-left font-bold text-gray-700 flex justify-between">
+                  <button key={f.id} onClick={() => setData({...data, fa: f.id})} className="w-full bg-white p-5 rounded-2xl shadow-sm font-bold text-slate-700 flex justify-between">
                     {f.nome} <span>→</span>
                   </button>
                 ))}
-                <button onClick={() => {const n = prompt("Nome:"); if(n) setData({...data, faz:[...data.faz, {id:gid(), nome:n}]})}} className="w-full border-2 border-dashed border-gray-300 p-5 rounded-2xl text-gray-400 font-bold">+ Nova Fazenda</button>
+                <button onClick={() => {const n = prompt("Nome da Fazenda:"); if(n) setData({...data, faz:[...data.faz, {id:gid(), nome:n}]})}} className="w-full border-2 border-dashed border-slate-300 p-5 rounded-2xl text-slate-400 font-bold">+ Adicionar Fazenda</button>
               </div>
             ) : (
-              <div className="space-y-6">
-                
-                {/* DASHBOARD TAB */}
+              <div className="space-y-4">
                 {ui.tab === 'dashboard' && (
-                  <div className="animate-in slide-in-from-bottom-4 duration-500">
-                    <div className="bg-white rounded-3xl p-6 shadow-xl shadow-gray-200 border border-gray-100 mb-4">
-                      <h3 className="text-gray-400 text-xs font-bold uppercase mb-4">Resumo da Estação</h3>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-3xl font-black text-gray-800">{piquetes.length}</p>
-                          <p className="text-[10px] text-gray-500 font-bold">PIQUETES TOTAIS</p>
-                        </div>
-                        <div>
-                          <p className="text-3xl font-black text-green-600">{lotes.length}</p>
-                          <p className="text-[10px] text-gray-500 font-bold">LOTES EM MANEJO</p>
-                        </div>
-                      </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border-b-4 border-emerald-500">
+                      <p className="text-[10px] font-bold text-slate-400">PIQUETES</p>
+                      <p className="text-2xl font-black">{piquetes.length}</p>
+                    </div>
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border-b-4 border-blue-500">
+                      <p className="text-[10px] font-bold text-slate-400">LOTES</p>
+                      <p className="text-2xl font-black">{lotes.length}</p>
                     </div>
                   </div>
                 )}
 
-                {/* MAPA TAB */}
                 {ui.tab === 'mapa' && (
                   <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <h2 className="font-extrabold text-gray-800">Mapa de Manejo</h2>
-                      <label className="bg-[#064e3b] text-white px-3 py-1 rounded-full text-xs font-bold cursor-pointer hover:bg-black transition">
-                        + KML <input type="file" onChange={handleKML} className="hidden"/>
+                    <div className="flex justify-between items-center px-1">
+                      <h2 className="font-black text-slate-800 uppercase text-sm">Mapa Operacional</h2>
+                      <label className="bg-emerald-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-bold cursor-pointer">
+                         IMPORTAR KML <input type="file" accept=".kml" onChange={handleKML} className="hidden"/>
                       </label>
                     </div>
 
-                    <div className="map-bg rounded-[2rem] border-4 border-white shadow-2xl overflow-hidden relative" style={{ height: '450px' }}>
+                    <div className="map-container">
                       <svg viewBox="0 0 1000 800" className="w-full h-full">
                         {piquetes.map(p => {
                           const lote = lotes.find(l => l.id === p.loteId);
                           const modulo = modulos.find(m => m.id === p.moduloId);
-                          // Lógica de cores do consultor:
-                          const strokeColor = lote ? lote.cor : (modulo ? modulo.cor : '#94a3b8');
-                          const fillColor = p.loteId ? `${lote.cor}33` : '#f1f5f9';
-                          const path = p.coordinates.map((c, i) => `${i === 0 ? 'M' : 'L'} ${proj(c[0], c[1])[0]} ${proj(c[0], c[1])[1]}`).join(' ') + ' Z';
                           
-                          // Centro do piquete para o ícone
+                          // COR DA BORDA: Se houver lote no módulo, a borda é do lote. Senão, é a do módulo.
+                          let strokeColor = "#94a3b8"; 
+                          let strokeW = "1";
+                          
+                          if(modulo) {
+                            strokeColor = modulo.cor || "#64748b";
+                            strokeW = "3";
+                          }
+                          if(lote) {
+                            strokeColor = lote.cor;
+                            strokeW = "6";
+                          }
+
+                          const path = p.coordinates.map((c, i) => `${i === 0 ? 'M' : 'L'} ${proj(c[0], c[1])[0]} ${proj(c[0], c[1])[1]}`).join(' ') + ' Z';
                           const cx = p.coordinates.reduce((s,c)=>s+c[0],0)/p.coordinates.length;
                           const cy = p.coordinates.reduce((s,c)=>s+c[1],0)/p.coordinates.length;
                           const [px, py] = proj(cx, cy);
 
                           return (
                             <g key={p.id} onClick={() => setUi({...ui, sel: p})}>
-                              <path d={path} fill={fillColor} stroke={strokeColor} strokeWidth={p.loteId ? "6" : "2"} className="transition-all cursor-pointer" />
+                              <path d={path} fill={p.loteId ? `${lote.cor}22` : "#f8fafc"} stroke={strokeColor} strokeWidth={strokeW} />
                               {p.loteId && (
-                                <g transform={`translate(${px-16}, ${py-16})`}>
-                                  <circle cx="16" cy="16" r="20" fill="white" filter="drop-shadow(0 2px 2px rgba(0,0,0,0.2))"/>
-                                  <TouroIcon color={lote.cor} />
+                                <g transform={`translate(${px-14}, ${py-14})`}>
+                                  <circle cx="14" cy="14" r="16" fill="white" stroke={lote.cor} strokeWidth="2"/>
+                                  <g transform="translate(2,2)"><BoiCorteIcon color={lote.cor} size={24}/></g>
                                 </g>
                               )}
                             </g>
                           );
                         })}
                       </svg>
-                      
-                      {/* PAINEL DE DETALHES FLUTUANTE */}
+
                       {ui.sel && (
-                        <div className="absolute bottom-4 left-4 right-4 glass p-5 rounded-2xl shadow-2xl border border-white animate-in slide-in-from-bottom-10">
-                          <div className="flex justify-between items-start mb-2">
-                            <div>
-                              <h4 className="font-black text-gray-800 text-lg uppercase">{ui.sel.nome}</h4>
-                              <p className="text-xs text-gray-500 font-bold">{ui.sel.area} HECTARES</p>
-                            </div>
-                            <button onClick={() => setUi({...ui, sel: null})} className="text-gray-400 text-xl font-bold">×</button>
+                        <div className="absolute bottom-4 left-4 right-4 bg-white p-4 rounded-2xl shadow-2xl border-t-4 border-emerald-500 animate-in slide-in-from-bottom-5">
+                          <div className="flex justify-between items-center mb-3">
+                            <h4 className="font-black text-slate-800">{ui.sel.nome} <span className="text-xs text-slate-400 ml-2">{ui.sel.area}ha</span></h4>
+                            <button onClick={() => setUi({...ui, sel: null})} className="text-slate-300 font-bold">FECHAR</button>
                           </div>
-                          
-                          <div className="bg-gray-50 p-3 rounded-xl flex justify-between items-center">
-                            <div>
-                              <p className="text-[10px] text-gray-400 font-bold uppercase">Lotação Instantânea</p>
-                              <p className="text-xl font-black text-[#064e3b]">
-                                {ui.sel.loteId ? (lotes.find(l=>l.id===ui.sel.loteId).ua / ui.sel.area).toFixed(2) : "0.00"} 
-                                <span className="text-xs ml-1">UA/ha</span>
-                              </p>
+                          <div className="grid grid-cols-2 gap-2 text-center">
+                            <div className="bg-slate-50 p-2 rounded-xl">
+                              <p className="text-[9px] font-bold text-slate-400">LOT. INSTANTÂNEA</p>
+                              <p className="font-black text-emerald-700">{ui.sel.loteId ? (lotes.find(l=>l.id===ui.sel.loteId).ua / ui.sel.area).toFixed(2) : "0.00"}</p>
                             </div>
-                            {!ui.sel.loteId && <button onClick={() => {
-                              const lid = prompt("Selecione o ID do lote ou vincule na aba Lotes");
-                              if(lid) setData({...data, piq: data.piq.map(x => x.id === ui.sel.id ? {...x, loteId: lid} : x)});
-                            }} className="bg-green-600 text-white text-[10px] px-3 py-2 rounded-lg font-bold">ALOCAR GADO</button>}
+                            <div className="bg-slate-50 p-2 rounded-xl">
+                              <p className="text-[9px] font-bold text-slate-400">LOT. MENSAL</p>
+                              <p className="font-black text-slate-700">--</p>
+                            </div>
                           </div>
+                          <select 
+                            className="w-full mt-3 p-2 bg-slate-900 text-white rounded-xl text-xs font-bold"
+                            value={ui.sel.loteId || ""}
+                            onChange={(e) => {
+                              const lid = e.target.value;
+                              setData({...data, piq: data.piq.map(x => x.id === ui.sel.id ? {...x, loteId: lid || null} : (lid && x.loteId === lid ? {...x, loteId: null} : x))});
+                              setUi({...ui, sel: null});
+                            }}
+                          >
+                            <option value="">PIQUETE VAZIO</option>
+                            {lotes.map(l => <option key={l.id} value={l.id}>ENTRAR LOTE: {l.nome}</option>)}
+                          </select>
                         </div>
                       )}
                     </div>
                   </div>
                 )}
 
-                {/* LOTES TAB */}
                 {ui.tab === 'lotes' && (
                   <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <h2 className="font-extrabold text-gray-800">Rebanho em Engorda</h2>
-                      <button onClick={() => {
-                        const n = prompt("Nome do Lote:");
-                        const u = prompt("Total UA:");
-                        const c = prompt("Cor (ex: #ff0000 para vermelho):");
-                        if(n) setData({...data, lot: [...data.lot, {id: gid(), fazendaId: data.fa, nome: n, ua: u, cor: c || '#000'}]});
-                      }} className="bg-[#064e3b] text-white p-2 rounded-xl"><TouroIcon color="white" size={18}/></button>
-                    </div>
+                    <button onClick={() => {
+                      const n = prompt("Nome do Lote:");
+                      const u = prompt("Total UA:");
+                      const c = prompt("Cor (ex: #ff0000):");
+                      if(n) setData({...data, lot: [...data.lot, {id: gid(), fazendaId: data.fa, nome: n, ua: u, cor: c || '#000'}]});
+                    }} className="w-full bg-emerald-700 text-white p-4 rounded-2xl font-bold">+ NOVO LOTE</button>
                     {lotes.map(l => (
-                      <div key={l.id} className="bg-white p-4 rounded-2xl shadow-sm border-l-8" style={{borderColor: l.cor}}>
-                        <div className="flex justify-between">
-                          <h4 className="font-black text-gray-700">{l.nome}</h4>
-                          <span className="text-xs font-bold text-gray-400">{l.ua} UA</span>
+                      <div key={l.id} className="bg-white p-4 rounded-2xl shadow-sm flex justify-between items-center border-r-8" style={{borderColor: l.cor}}>
+                        <div>
+                          <p className="font-black text-slate-800">{l.nome}</p>
+                          <p className="text-xs text-slate-400">{l.ua} UA total</p>
                         </div>
-                        <select 
-                          className="mt-2 w-full text-xs p-2 bg-gray-50 rounded-lg outline-none font-bold"
-                          onChange={(e) => {
-                            const pid = e.target.value;
-                            setData({...data, piq: data.piq.map(p => p.loteId === l.id ? {...p, loteId: null} : p.id === pid ? {...p, loteId: l.id} : p)});
-                          }}
-                        >
-                          <option>Mudar de Piquete...</option>
-                          {piquetes.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-                        </select>
+                        <button onClick={() => setData({...data, lot: data.lot.filter(x => x.id !== l.id)})} className="text-red-300 font-bold">EXCLUIR</button>
                       </div>
                     ))}
                   </div>
                 )}
 
-                {/* MODULOS TAB */}
                 {ui.tab === 'modulos' && (
                   <div className="space-y-4">
                     <button onClick={() => {
                       const n = prompt("Nome do Módulo:");
-                      const c = prompt("Cor do Módulo (ex: #ddd):");
-                      if(n) setData({...data, mod: [...data.mod, {id: gid(), fazendaId: data.fa, nome: n, cor: c}]});
-                    }} className="w-full bg-gray-800 text-white p-4 rounded-2xl font-bold">+ Criar Novo Módulo</button>
+                      const c = prompt("Cor do Módulo:");
+                      if(n) setData({...data, mod: [...data.mod, {id: gid(), fazendaId: data.fa, nome: n, cor: c || '#64748b'}]});
+                    }} className="w-full bg-slate-800 text-white p-4 rounded-2xl font-bold">+ NOVO MÓDULO</button>
                     {modulos.map(m => (
-                      <div key={m.id} className="bg-white p-4 rounded-2xl border-2 border-gray-100">
-                        <h4 className="font-black text-gray-800">{m.nome}</h4>
-                        <p className="text-[10px] text-gray-400 mb-2">VINCULAR PIQUETES:</p>
+                      <div key={m.id} className="bg-white p-4 rounded-2xl shadow-sm border-l-8" style={{borderColor: m.cor}}>
+                        <div className="flex justify-between mb-3">
+                          <p className="font-black text-slate-800">{m.nome}</p>
+                          <button onClick={() => setData({...data, mod: data.mod.filter(x => x.id !== m.id)})} className="text-red-300 text-xs">REMOVER</button>
+                        </div>
                         <div className="flex flex-wrap gap-2">
                           {piquetes.map(p => (
-                            <button 
-                              key={p.id} 
-                              onClick={() => setData({...data, piq: data.piq.map(x => x.id === p.id ? {...x, moduloId: x.moduloId === m.id ? null : m.id} : x)})}
-                              className={`text-[10px] px-2 py-1 rounded-full font-bold transition ${p.moduloId === m.id ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-400'}`}
-                            >
+                            <button key={p.id} onClick={() => setData({...data, piq: data.piq.map(x => x.id === p.id ? {...x, moduloId: x.moduloId === m.id ? null : m.id} : x)})}
+                              className={`text-[9px] px-2 py-1 rounded-lg font-bold ${p.moduloId === m.id ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
                               {p.nome}
                             </button>
                           ))}
@@ -271,21 +249,16 @@
             )}
           </main>
 
-          {/* NAVEGAÇÃO GLASSMORPISM */}
-          <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md glass border border-white/50 rounded-[2.5rem] shadow-2xl p-2 flex justify-between items-center z-[100]">
+          <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-slate-200 p-3 flex justify-around items-center z-50">
             {[
-              {id: 'dashboard', icon: '📊', label: 'Início'},
-              {id: 'mapa', icon: '🗺️', label: 'Mapa'},
-              {id: 'lotes', icon: '🐄', label: 'Lotes'},
-              {id: 'modulos', icon: '🏗️', label: 'Módulos'}
+              {id: 'dashboard', label: 'Início', icon: '📊'},
+              {id: 'mapa', label: 'Mapa', icon: '🗺️'},
+              {id: 'lotes', label: 'Lotes', icon: '🐂'},
+              {id: 'modulos', label: 'Módulos', icon: '📦'}
             ].map(t => (
-              <button 
-                key={t.id} 
-                onClick={() => setUi({...ui, tab: t.id})}
-                className={`flex flex-col items-center justify-center w-16 h-16 rounded-full transition-all ${ui.tab === t.id ? 'bg-[#064e3b] text-white scale-110 shadow-lg' : 'text-gray-400'}`}
-              >
+              <button key={t.id} onClick={() => setUi({...ui, tab: t.id})} className={`flex flex-col items-center transition-all ${ui.tab === t.id ? 'text-emerald-700 scale-110' : 'text-slate-400'}`}>
                 <span className="text-xl">{t.icon}</span>
-                <span className="text-[9px] font-black uppercase tracking-tighter">{t.label}</span>
+                <span className="text-[9px] font-extrabold uppercase">{t.label}</span>
               </button>
             ))}
           </nav>
