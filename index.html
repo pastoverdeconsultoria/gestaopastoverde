@@ -1,236 +1,300 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes">
-    <title>Pasto Verde Pro - Gestão Inteligente</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
-        body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; background-color: #f8fafc; }
-        .glass-header { background: rgba(11, 66, 33, 0.95); backdrop-filter: blur(10px); }
-        .card-shadow { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .active-tab { position: relative; color: #10b981 !important; }
-        .active-tab::after { content: ''; position: absolute; bottom: 0; left: 25%; width: 50%; height: 3px; background: #10b981; border-radius: 2px; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Pasto Verde Pro v3.0</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
+    body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    .glass-header { background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); }
+    .active-tab { border-bottom: 4px solid #10b981; color: #065f46 !important; font-weight: 800; }
+    .card-shadow { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05); }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+  </style>
 </head>
 <body>
-    <div id="root"></div>
-    <script type="text/babel">
-const { useState, useEffect, useMemo } = React;
+  <div id="root"></div>
+  <script type="text/babel">
+const { useState, useEffect, useMemo, useRef } = React;
 
 // --- ÍCONES ---
-const I = ({ size = 20, children }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
+const I = ({ size = 20, children }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
 const Upload = p => <I {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" /></I>;
+const Plus = p => <I {...p}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></I>;
+const Trash2 = p => <I {...p}><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></I>;
+const MapPin = p => <I {...p}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></I>;
+const Navigation = p => <I {...p}><polygon points="3 11 22 2 13 21 11 13 3 11" /></I>;
+const Compass = p => <I {...p}><circle cx="12" cy="12" r="10" /><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" /></I>;
 const BarChart = p => <I {...p}><line x1="12" y1="20" x2="12" y2="10" /><line x1="18" y1="20" x2="18" y2="4" /><line x1="6" y1="20" x2="6" y2="16" /></I>;
-const MapIcon = p => <I {...p}><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" /><line x1="8" y1="2" x2="8" y2="18" /><line x1="16" y1="6" x2="16" y2="22" /></I>;
-const Users = p => <I {...p}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></I>;
 
-// --- UTILITÁRIOS DE CÁLCULO (v2.9.0) ---
+// --- LÓGICA CORE (RESTAURADA INTEGRALMENTE DA v2.9) ---
 const gid = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 const calcArea = c => {
-    if (!c || c.length < 3) return 0;
-    let a = 0;
-    const n = c.length, lm = c.reduce((s, v) => s + v[1], 0) / n, fl = Math.cos(lm * Math.PI / 180);
-    for (let i = 0; i < n; i++) {
-        const j = (i + 1) % n, xi = c[i][0] * fl * 111320, yi = c[i][1] * 110540, xj = c[j][0] * fl * 111320, yj = c[j][1] * 110540;
-        a += xi * yj - xj * yi;
-    }
-    return (Math.abs(a) / 2 / 10000).toFixed(2);
+  if (!c || c.length < 3) return 0;
+  let a = 0;
+  const n = c.length, lm = c.reduce((s, v) => s + v[1], 0) / n, fl = Math.cos(lm * Math.PI / 180);
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n, xi = c[i][0] * fl * 111320, yi = c[i][1] * 110540, xj = c[j][0] * fl * 111320, yj = c[j][1] * 110540;
+    a += xi * yj - xj * yi;
+  }
+  return (Math.abs(a) / 2 / 10000).toFixed(2);
 };
-const calcUA = (peso, qtd) => (peso && qtd) ? ((peso * qtd) / 450).toFixed(2) : 0;
+const calcUA = (p, q) => !p || !q ? 0 : ((p * q) / 450).toFixed(2);
+const isReserva = n => {
+  const s = n.toLowerCase();
+  return s.includes('reserva') || s.includes('app') || s.includes('mata');
+};
+const pointInPolygon = (p, vs) => {
+  let inside = false;
+  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+    const xi = vs[i][0], yi = vs[i][1], xj = vs[j][0], yj = vs[j][1];
+    if ((yi > p[1]) != (yj > p[1]) && (p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+};
 
 function App() {
-    // ESTADO COMPLETO (v2.9.0)
-    const [data, setData] = useState({ faz: [], fa: null, mod: [], piq: [], lot: [], his: [], mb: null });
-    const [ui, setUi] = useState({ tab: 'dashboard', modal: null, sel: null, st: '', zm: 1, pn: { x: 0, y: 0 }, fd: {} });
-    const [gps, setGps] = useState({ pos: null, status: 'buscando' });
+  const [data, setData] = useState({ faz: [], fa: null, mod: [], piq: [], lot: [], his: [], mb: null });
+  const [ui, setUi] = useState({ tab: 'dashboard', modal: null, sel: null, st: '', zm: 1, pn: { x: 0, y: 0 }, fd: {} });
+  const [gps, setGps] = useState({ pos: null, status: 'buscando' });
+  const svgRef = useRef(null);
 
-    useEffect(() => {
-        const s = localStorage.getItem('PastoVerdePro_Data');
-        if (s) try { setData(JSON.parse(s)); } catch (e) {}
-    }, []);
+  // Carregamento Seguro
+  useEffect(() => {
+    const s = localStorage.getItem('pastureSystem');
+    if (s) try { setData(JSON.parse(s)); } catch (e) { }
+  }, []);
 
-    useEffect(() => {
-        localStorage.setItem('PastoVerdePro_Data', JSON.stringify(data));
-    }, [data]);
+  useEffect(() => {
+    localStorage.setItem('pastureSystem', JSON.stringify(data));
+  }, [data]);
 
-    // GPS ATIVO
-    useEffect(() => {
-        if (!navigator.geolocation) return;
-        const watchId = navigator.geolocation.watchPosition(
-            p => setGps({ pos: { lat: p.coords.latitude, lng: p.coords.longitude }, status: 'ativo' }),
-            () => setGps(g => ({ ...g, status: 'erro' })),
-            { enableHighAccuracy: true }
-        );
-        return () => navigator.geolocation.clearWatch(watchId);
-    }, []);
-
-    // LOGICA DE IMPORTAÇÃO KML (Mantida)
-    const hKML = e => {
-        const f = e.target.files[0];
-        if (!f || !data.fa) return;
-        const r = new FileReader();
-        r.onload = ev => {
-            const p = new DOMParser(), x = p.parseFromString(ev.target.result, 'text/xml');
-            const pl = Array.from(x.getElementsByTagName('Placemark'));
-            let minLat = 180, maxLat = -180, minLng = 180, maxLng = -180;
-            const np = pl.map(pm => {
-                const coStr = pm.getElementsByTagName('coordinates')[0]?.textContent.trim();
-                if (!coStr) return null;
-                const co = coStr.split(/\s+/).map(pr => {
-                    const [lng, lat] = pr.split(',').map(parseFloat);
-                    if(lng < minLng) minLng = lng; if(lng > maxLng) maxLng = lng;
-                    if(lat < minLat) minLat = lat; if(lat > maxLat) maxLat = lat;
-                    return [lng, lat];
-                });
-                return { id: gid(), fazendaId: data.fa, nome: pm.getElementsByTagName('name')[0]?.textContent || 'Área', area: calcArea(co), coordinates: co, status: 'Livre' };
-            }).filter(p => p);
-            setData({ ...data, piq: np, mb: { minLat, maxLat, minLng, maxLng, width: maxLng-minLng, height: maxLat-minLat } });
-            setUi({...ui, st: '✅ Mapa Importado!'});
-        };
-        r.readAsText(f);
-    };
-
-    const proj = (lng, lat) => {
-        if (!data.mb) return [0, 0];
-        return [((lng - data.mb.minLng) / data.mb.width) * 800 + 100, ((data.mb.maxLat - lat) / data.mb.height) * 600 + 100];
-    };
-
-    const fazAt = data.faz.find(f => f.id === data.fa);
-    const piqF = data.piq.filter(p => p.fazendaId === data.fa);
-    const lotF = data.lot.filter(l => l.fazendaId === data.fa && l.status !== 'Vendido');
-    
-    // CÁLCULOS DE UA TOTAIS
-    const totalUA = lotF.reduce((s, l) => s + parseFloat(calcUA(l.peso, l.qtd)), 0);
-    const areaTotal = piqF.reduce((s, p) => s + parseFloat(p.area), 0);
-    const lotacaoMedia = areaTotal > 0 ? (totalUA / areaTotal).toFixed(2) : "0.00";
-
-    return (
-        <div className="min-h-screen flex flex-col bg-slate-50">
-            {/* HEADER PREMIUM */}
-            <header className="glass-header text-white px-6 py-4 flex justify-between items-center sticky top-0 z-50 shadow-xl">
-                <div>
-                    <h1 className="text-xl font-black tracking-tighter flex items-center gap-2">
-                        <span className="bg-emerald-500 p-1 rounded-md"><BarChart size={20}/></span>
-                        PASTO VERDE PRO
-                    </h1>
-                    <p className="text-[10px] text-emerald-300 font-bold uppercase">{fazAt?.nome || 'Selecione uma Fazenda'}</p>
-                </div>
-                {gps.status === 'ativo' && (
-                    <div className="bg-emerald-900/50 px-3 py-1 rounded-full border border-emerald-700 text-[10px] font-bold animate-pulse">GPS ON</div>
-                )}
-            </header>
-
-            {!data.fa ? (
-                <div className="p-8 flex flex-col items-center justify-center h-[80vh]">
-                    <div className="bg-white p-8 rounded-[2.5rem] card-shadow w-full max-w-sm text-center">
-                        <h2 className="text-2xl font-black mb-4">Iniciar Gestão</h2>
-                        <input className="w-full p-4 bg-slate-100 rounded-2xl mb-4 outline-none focus:ring-2 ring-emerald-500" 
-                               placeholder="Nome da Propriedade" 
-                               onChange={e => setUi({...ui, fd: {...ui.fd, nome: e.target.value}})} />
-                        <button onClick={() => { if(ui.fd.nome) { const id=gid(); setData({...data, faz: [{id, nome: ui.fd.nome}], fa: id}); } }}
-                                className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-emerald-200">
-                            CRIAR FAZENDA
-                        </button>
-                    </div>
-                </div>
-            ) : (
-                <>
-                    <nav className="bg-white border-b flex overflow-x-auto no-scrollbar sticky top-[68px] z-40 px-2">
-                        {['dashboard', 'mapa', 'lotes', 'piquetes'].map(t => (
-                            <button key={t} onClick={() => setUi({...ui, tab: t})} 
-                                className={`px-6 py-4 text-[11px] font-black uppercase tracking-widest whitespace-nowrap ${ui.tab === t ? 'active-tab' : 'text-slate-400'}`}>
-                                {t}
-                            </button>
-                        ))}
-                    </nav>
-
-                    <main className="p-4 max-w-5xl mx-auto w-full space-y-4">
-                        {ui.tab === 'dashboard' && (
-                            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-4">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-white p-6 rounded-3xl card-shadow border border-slate-100">
-                                        <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Área Total</p>
-                                        <p className="text-2xl font-black text-slate-800">{areaTotal.toFixed(2)} <span className="text-xs text-slate-400">ha</span></p>
-                                    </div>
-                                    <div className="bg-white p-6 rounded-3xl card-shadow border border-slate-100">
-                                        <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Total UA</p>
-                                        <p className="text-2xl font-black text-slate-800">{totalUA.toFixed(1)} <span className="text-xs text-slate-400">UA</span></p>
-                                    </div>
-                                </div>
-                                <div className="bg-gradient-to-br from-emerald-600 to-emerald-800 p-8 rounded-[2.5rem] text-white shadow-xl">
-                                    <p className="text-emerald-200 text-[10px] font-black uppercase tracking-widest mb-1">Lotação Média Atual</p>
-                                    <p className="text-5xl font-black">{lotacaoMedia} <span className="text-xl opacity-60 font-normal">UA/ha</span></p>
-                                    <div className="mt-6 h-2 bg-white/10 rounded-full overflow-hidden">
-                                        <div className="h-full bg-emerald-400" style={{width: `${Math.min(lotacaoMedia * 20, 100)}%`}}></div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {ui.tab === 'mapa' && (
-                            <div className="space-y-4 animate-in fade-in duration-500">
-                                <div className="flex justify-between items-center">
-                                    <label className="bg-slate-800 text-white px-5 py-3 rounded-2xl font-black text-[10px] uppercase cursor-pointer flex items-center gap-2">
-                                        <Upload size={14}/> Carregar KML
-                                        <input type="file" className="hidden" accept=".kml" onChange={hKML} />
-                                    </label>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => setUi({...ui, zm: ui.zm + 0.2})} className="bg-white w-12 h-12 flex items-center justify-center rounded-2xl border border-slate-200 font-bold">+</button>
-                                        <button onClick={() => setUi({...ui, zm: Math.max(0.1, ui.zm - 0.2)})} className="bg-white w-12 h-12 flex items-center justify-center rounded-2xl border border-slate-200 font-bold">-</button>
-                                    </div>
-                                </div>
-                                <div className="bg-slate-200 rounded-[2.5rem] border-4 border-white card-shadow overflow-hidden h-[65vh] relative">
-                                    <svg viewBox="0 0 1000 800" className="w-full h-full touch-none">
-                                        <g transform={`translate(${ui.pn.x}, ${ui.pn.y}) scale(${ui.zm})`}>
-                                            {piqF.map(p => (
-                                                <path key={p.id} 
-                                                    d={p.coordinates.map((c, i) => `${i===0?'M':'L'} ${proj(c[0], c[1]).join(' ')}`).join(' ') + ' Z'} 
-                                                    fill={p.status === 'Ocupado' ? "#fef3c7" : "#fff"} 
-                                                    stroke={p.status === 'Ocupado' ? "#f59e0b" : "#cbd5e1"} 
-                                                    strokeWidth="2"
-                                                />
-                                            ))}
-                                            {gps.pos && (
-                                                <circle cx={proj(gps.pos.lng, gps.pos.lat)[0]} cy={proj(gps.pos.lng, gps.pos.lat)[1]} r="6" fill="#3b82f6" stroke="white" strokeWidth="2" />
-                                            )}
-                                        </g>
-                                    </svg>
-                                </div>
-                            </div>
-                        )}
-
-                        {ui.tab === 'lotes' && (
-                            <div className="space-y-4">
-                                <button className="w-full bg-white border-2 border-dashed border-slate-200 p-6 rounded-3xl text-slate-400 font-bold hover:border-emerald-500 hover:text-emerald-500 transition-all">
-                                    + NOVO LOTE DE ANIMAIS
-                                </button>
-                                {lotF.map(l => (
-                                    <div key={l.id} className="bg-white p-6 rounded-3xl card-shadow border border-slate-100 flex justify-between items-center">
-                                        <div>
-                                            <p className="font-black text-slate-800 uppercase">{l.nome}</p>
-                                            <p className="text-xs text-slate-400 font-bold">{l.qtd} cabeças | {l.peso} kg avg</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-lg font-black text-emerald-600">{calcUA(l.peso, l.qtd)} UA</p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </main>
-                </>
-            )}
-        </div>
+  // GPS (Funcional)
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    const id = navigator.geolocation.watchPosition(
+      p => setGps({ pos: { lat: p.coords.latitude, lng: p.coords.longitude }, status: 'ativo' }),
+      null, { enableHighAccuracy: true }
     );
+    return () => navigator.geolocation.clearWatch(id);
+  }, []);
+
+  // Handlers KML e Mapa
+  const proj = (lng, lat) => {
+    if (!data.mb) return [0, 0];
+    return [((lng - data.mb.minLng) / data.mb.width) * 800 + 100, ((data.mb.maxLat - lat) / data.mb.height) * 600 + 100];
+  };
+
+  const hKML = e => {
+    const f = e.target.files[0];
+    if (!f || !data.fa) return;
+    const r = new FileReader();
+    r.onload = ev => {
+      const p = new DOMParser(), x = p.parseFromString(ev.target.result, 'text/xml');
+      const pl = Array.from(x.getElementsByTagName('Placemark'));
+      let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+      const np = pl.map(pm => {
+        const coStr = pm.getElementsByTagName('coordinates')[0]?.textContent.trim();
+        if (!coStr) return null;
+        const co = coStr.split(/\s+/).map(pr => {
+          const [lng, lat] = pr.split(',').map(parseFloat);
+          if(lng < minLng) minLng = lng; if(lng > maxLng) maxLng = lng;
+          if(lat < minLat) minLat = lat; if(lat > maxLat) maxLat = lat;
+          return [lng, lat];
+        }).filter(c => c);
+        const n = pm.getElementsByTagName('name')[0]?.textContent || 'Área';
+        return { id: gid(), fazendaId: data.fa, nome: n, area: calcArea(co), coordinates: co, ehReserva: isReserva(n) };
+      }).filter(p => p);
+      setData({...data, piq: np, mb: { minLat, maxLat, minLng, maxLng, width: maxLng-minLng, height: maxLat-minLat }});
+      setUi({...ui, st: '✅ Mapa Importado!'});
+    };
+    r.readAsText(f);
+  };
+
+  const fazAt = data.faz.find(f => f.id === data.fa);
+  const piqF = data.piq.filter(p => p.fazendaId === data.fa);
+  const lotF = data.lot.filter(l => l.fazendaId === data.fa);
+  const totalUA = lotF.reduce((s, l) => s + parseFloat(calcUA(l.peso, l.quantidade || 0)), 0);
+  const areaUtil = piqF.filter(p => !p.ehReserva).reduce((s, p) => s + parseFloat(p.area), 0);
+  const lotacao = areaUtil > 0 ? (totalUA / areaUtil).toFixed(2) : '0.00';
+
+  return (
+    <div className="min-h-screen flex flex-col">
+      {/* HEADER PREMIUM */}
+      <header className="glass-header text-white p-4 shadow-2xl sticky top-0 z-50">
+        <div className="max-w-5xl mx-auto flex justify-between items-center">
+          <div>
+            <h1 className="text-xl font-black tracking-tighter flex items-center gap-2">
+              <span className="bg-white text-emerald-800 p-1 rounded">PRO</span> PASTO VERDE
+            </h1>
+            {fazAt && <button onClick={() => setUi({...ui, fa: null})} className="text-[10px] font-bold uppercase text-emerald-200">📍 {fazAt.nome} (Trocar)</button>}
+          </div>
+          {gps.status === 'ativo' && <div className="flex items-center gap-2 bg-emerald-800/50 px-3 py-1 rounded-full text-[10px] font-bold border border-emerald-400/30">GPS ATIVO</div>}
+        </div>
+      </header>
+
+      {data.fa && (
+        <nav className="bg-white border-b flex overflow-x-auto no-scrollbar sticky top-[68px] z-40 shadow-sm px-2">
+          {['dashboard', 'mapa', 'piquetes', 'modulos', 'lotes', 'historico', 'config'].map(t => (
+            <button key={t} onClick={() => setUi({...ui, tab: t})} 
+              className={`px-5 py-4 text-[11px] font-black uppercase tracking-widest whitespace-nowrap transition-all ${ui.tab === t ? 'active-tab' : 'text-slate-400'}`}>
+              {t}
+            </button>
+          ))}
+        </nav>
+      )}
+
+      <main className="flex-1 p-4 max-w-5xl mx-auto w-full">
+        {!data.fa ? (
+          <div className="py-12 flex flex-col items-center animate-in fade-in zoom-in">
+            <div className="bg-white p-8 rounded-[2.5rem] card-shadow border border-slate-100 w-full max-w-sm">
+              <h2 className="text-2xl font-black text-slate-800 mb-6 text-center underline decoration-emerald-500 decoration-4">Fazendas</h2>
+              <div className="space-y-3 mb-6">
+                {data.faz.map(f => (
+                  <button key={f.id} onClick={() => setData({...data, fa: f.id})} className="w-full p-4 text-left border-2 border-slate-100 rounded-2xl font-bold hover:border-emerald-500 transition-all flex justify-between items-center">
+                    {f.nome} <Navigation size={14}/>
+                  </button>
+                ))}
+              </div>
+              <input type="text" placeholder="Nome da Nova Fazenda" className="w-full p-4 bg-slate-50 rounded-2xl mb-4 outline-none focus:ring-2 ring-emerald-500" onChange={e => setUi({...ui, fd: {nome: e.target.value}})} />
+              <button onClick={() => { if(ui.fd.nome) { const id=gid(); setData({...data, faz: [...data.faz, {id, nome: ui.fd.nome}], fa: id}); }}} className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-emerald-200">ADICIONAR PROPRIEDADE</button>
+            </div>
+          </div>
+        ) : (
+          <div className="animate-in fade-in duration-300">
+            {ui.tab === 'dashboard' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {[ {l: 'Área Útil', v: areaUtil.toFixed(2)+'ha'}, {l: 'Lotes', v: lotF.length}, {l: 'Total UA', v: totalUA.toFixed(1)}, {l: 'Lotação', v: lotacao+' UA/ha'} ].map((s, i) => (
+                    <div key={i} className="bg-white p-5 rounded-3xl border border-slate-100 card-shadow">
+                      <p className="text-[10px] font-black text-slate-400 uppercase">{s.l}</p>
+                      <p className="text-xl font-black text-slate-800">{s.v}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="bg-emerald-800 p-8 rounded-[3rem] text-white card-shadow flex flex-col md:flex-row justify-between items-center gap-6">
+                   <div className="text-center md:text-left">
+                     <p className="text-emerald-300 text-xs font-black uppercase tracking-widest mb-2">Desempenho da Pastagem</p>
+                     <h3 className="text-4xl font-black">Manejo Eficiente</h3>
+                   </div>
+                   <div className="bg-white/10 p-6 rounded-full border border-white/20">
+                     <BarChart size={48}/>
+                   </div>
+                </div>
+              </div>
+            )}
+
+            {ui.tab === 'mapa' && (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                   <label className="bg-slate-800 text-white px-5 py-3 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 cursor-pointer">
+                     <Upload size={14}/> Importar KML
+                     <input type="file" className="hidden" accept=".kml" onChange={hKML} />
+                   </label>
+                   <div className="flex gap-2">
+                     <button onClick={() => setUi({...ui, zm: ui.zm + 0.2})} className="bg-white w-12 h-12 flex items-center justify-center rounded-2xl card-shadow font-bold">+</button>
+                     <button onClick={() => setUi({...ui, zm: Math.max(0.1, ui.zm - 0.2)})} className="bg-white w-12 h-12 flex items-center justify-center rounded-2xl card-shadow font-bold">-</button>
+                   </div>
+                </div>
+                <div className="bg-slate-200 rounded-[3rem] border-8 border-white card-shadow overflow-hidden h-[60vh] relative shadow-inner">
+                  <svg viewBox="0 0 1000 800" className="w-full h-full touch-none">
+                    <g transform={`translate(${ui.pn.x}, ${ui.pn.y}) scale(${ui.zm})`}>
+                      {piqF.map(p => (
+                        <path key={p.id} d={p.coordinates.map((c, i) => `${i===0?'M':'L'} ${proj(c[0], c[1]).join(' ')}`).join(' ') + ' Z'} 
+                          fill={p.ehReserva ? "#064e3b" : "#fff"} stroke={p.ehReserva ? "#064e3b" : "#cbd5e1"} strokeWidth="2" opacity="0.8" />
+                      ))}
+                      {gps.pos && <circle cx={proj(gps.pos.lng, gps.pos.lat)[0]} cy={proj(gps.pos.lng, gps.pos.lat)[1]} r="8" fill="#3b82f6" stroke="white" strokeWidth="3" />}
+                    </g>
+                  </svg>
+                </div>
+              </div>
+            )}
+
+            {ui.tab === 'lotes' && (
+              <div className="space-y-4">
+                <button onClick={() => setUi({...ui, modal: 'lote', fd: {}})} className="w-full bg-emerald-600 text-white p-6 rounded-3xl font-black shadow-lg shadow-emerald-200 flex justify-center items-center gap-2">
+                  <Plus/> NOVO LOTE DE ANIMAIS
+                </button>
+                {lotF.length === 0 ? <p className="text-center text-slate-400 py-12">Nenhum lote ativo.</p> : 
+                  lotF.map(l => (
+                    <div key={l.id} className="bg-white p-6 rounded-3xl border border-slate-100 card-shadow flex justify-between items-center">
+                      <div>
+                        <p className="font-black text-slate-800 uppercase text-lg">{l.nome}</p>
+                        <p className="text-xs font-bold text-slate-400">{l.quantidade} Cabeças | {l.peso}kg avg</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xl font-black text-emerald-600">{calcUA(l.peso, l.quantidade)} <span className="text-xs">UA</span></p>
+                      </div>
+                    </div>
+                  ))
+                }
+              </div>
+            )}
+
+            {ui.tab === 'piquetes' && (
+              <div className="bg-white rounded-3xl card-shadow border border-slate-100 overflow-hidden">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b">
+                      <th className="p-5 text-[10px] font-black text-slate-400 uppercase">Piquete</th>
+                      <th className="p-5 text-[10px] font-black text-slate-400 uppercase text-right">Área</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {piqF.map(p => (
+                      <tr key={p.id}>
+                        <td className="p-5">
+                          <p className="font-bold text-slate-700 text-sm">{p.nome}</p>
+                          {p.ehReserva && <span className="text-[8px] bg-emerald-100 text-emerald-700 px-2 rounded-full font-black">RESERVA</span>}
+                        </td>
+                        <td className="p-5 text-right font-black text-slate-800">{p.area} ha</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {ui.tab === 'modulos' && (
+              <div className="py-12 text-center bg-white rounded-3xl border border-dashed border-slate-200">
+                <Compass size={48} className="mx-auto text-slate-200 mb-4"/>
+                <p className="text-slate-400 font-bold">Gestão de Módulos (v3.0)</p>
+                <button className="mt-4 text-emerald-600 font-black text-xs uppercase">Configurar Grupos de Rotação</button>
+              </div>
+            )}
+
+            {ui.tab === 'config' && (
+               <div className="space-y-4">
+                 <div className="bg-white p-6 rounded-3xl card-shadow border border-slate-100">
+                   <h3 className="font-black text-slate-800 mb-4">Exportação de Dados</h3>
+                   <div className="flex gap-2">
+                     <button onClick={() => {
+                        const b = new Blob([JSON.stringify(data)], {type: 'application/json'});
+                        const u = URL.createObjectURL(b);
+                        const a = document.createElement('a'); a.href = u; a.download = 'backup.json'; a.click();
+                     }} className="flex-1 bg-slate-800 text-white p-4 rounded-2xl font-black text-xs uppercase">Fazer Backup</button>
+                     <button onClick={() => { if(confirm('Limpar tudo?')) { localStorage.clear(); location.reload(); }}} className="flex-1 border-2 border-red-100 text-red-500 p-4 rounded-2xl font-black text-xs uppercase">Resetar Sistema</button>
+                   </div>
+                 </div>
+               </div>
+            )}
+          </div>
+        )}
+      </main>
+
+      {ui.st && <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase z-[100] animate-bounce">{ui.st}</div>}
+    </div>
+  );
 }
+
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<App />);
-    </script>
+  </script>
 </body>
 </html>
