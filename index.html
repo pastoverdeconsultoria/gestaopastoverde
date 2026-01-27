@@ -1,250 +1,611 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes">
-    <title>Pasto Verde Pro v3.0 - Full Engine</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
-        body { margin: 0; font-family: 'Inter', sans-serif; background: #f8fafc; }
-        .glass-header { background: #064e3b; position: sticky; top: 0; z-index: 50; }
-        .active-tab { border-bottom: 4px solid #10b981; color: #064e3b !important; font-weight: 900; }
-        .modal-bg { background: rgba(0,0,0,0.85); backdrop-filter: blur(6px); }
-        .piquete-path { transition: all 0.2s; cursor: pointer; }
-        .piquete-path:hover { fill-opacity: 0.8; stroke: #10b981; stroke-width: 3; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Manager Pro v2.9.0 - Gestão de Pastagem</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+  <style>
+    /* evita “altura zero” em alguns cenários */
+    html, body { height: 100%; }
+  </style>
 </head>
-<body>
-    <div id="root"></div>
-    <script type="text/babel">
-const { useState, useEffect } = React;
+<body class="bg-slate-50">
+  <div id="root"></div>
 
-const gid = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  <script>
+  const { useEffect, useMemo, useRef, useState } = React;
 
-// Funções Matemáticas v2.9
-const calcArea = c => {
-    if (!c || c.length < 3) return 0;
-    let a = 0;
-    const n = c.length, lm = c.reduce((s, v) => s + v[1], 0) / n, fl = Math.cos(lm * Math.PI / 180);
-    for (let i = 0; i < n; i++) {
-        const j = (i + 1) % n, xi = c[i][0] * fl * 111320, yi = c[i][1] * 110540, xj = c[j][0] * fl * 111320, yj = c[j][1] * 110540;
-        a += xi * yj - xj * yi;
+  const fmt = n => (Number.isFinite(+n) ? (+n).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : "-");
+
+  const uid = () => Math.random().toString(16).slice(2) + Date.now().toString(16);
+
+  // ---- Geometria básica (sem libs) ----
+  const polygonAreaMeters2 = (coordsLngLat) => {
+    // coordsLngLat: [[lng,lat],...]
+    if (!Array.isArray(coordsLngLat) || coordsLngLat.length < 3) return 0;
+
+    // projeção equiretangular local (aprox) para área
+    const R = 6378137;
+    const lats = coordsLngLat.map(c => +c[1]).filter(Number.isFinite);
+    const lat0 = (lats.reduce((a,b)=>a+b,0) / Math.max(1,lats.length)) * Math.PI/180;
+
+    const pts = coordsLngLat.map(([lng,lat]) => {
+      const x = (lng * Math.PI/180) * R * Math.cos(lat0);
+      const y = (lat * Math.PI/180) * R;
+      return [x,y];
+    });
+
+    let area = 0;
+    for (let i=0; i<pts.length; i++){
+      const [x1,y1] = pts[i];
+      const [x2,y2] = pts[(i+1)%pts.length];
+      area += (x1*y2 - x2*y1);
     }
-    return (Math.abs(a) / 2 / 10000).toFixed(2);
-};
+    return Math.abs(area)/2;
+  };
 
-function App() {
-    const [data, setData] = useState({ faz: [], fa: null, piq: [], lot: [], his: [], mb: null });
-    const [ui, setUi] = useState({ tab: 'dashboard', modal: null, sel: null, fd: {}, st: '', zm: 1, pn: {x:0, y:0} });
-    const [gps, setGps] = useState({ pos: null });
+  const centroidLngLat = (coordsLngLat) => {
+    // centróide simples (média) - suficiente para labels/seleção
+    if (!Array.isArray(coordsLngLat) || !coordsLngLat.length) return [0,0];
+    let sx=0, sy=0, c=0;
+    for (const [lng,lat] of coordsLngLat){
+      const L = +lng, A = +lat;
+      if (!Number.isFinite(L) || !Number.isFinite(A)) continue;
+      sx += L; sy += A; c++;
+    }
+    return c ? [sx/c, sy/c] : [0,0];
+  };
 
+  // ---- KML Parser (polígonos) ----
+  // Retorna:
+  //  piq = [{ id, name, coordinates: [ [ [lng,lat], ... ] ] }]
+  //  bounds = {minLng,maxLng,minLat,maxLat,width,height}
+  const parseKML = t => {
+    const parser = new DOMParser();
+    const xml = parser.parseFromString(t, "text/xml");
+
+    const placemarks = Array.from(xml.getElementsByTagName("Placemark"));
+    const piq = [];
+
+    let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+
+    for (const pm of placemarks){
+      const nameNode = pm.getElementsByTagName("name")[0];
+      const name = nameNode ? nameNode.textContent.trim() : "Sem nome";
+
+      // Polygon -> coordinates
+      const coordNodes = Array.from(pm.getElementsByTagName("coordinates"));
+      if (!coordNodes.length) continue;
+
+      // pega o primeiro conjunto de coordenadas do placemark
+      const raw = coordNodes[0].textContent.trim();
+      if (!raw) continue;
+
+      // coord string: "lng,lat,alt lng,lat,alt ..."
+      const ring = raw
+        .split(/\s+/)
+        .map(s => s.trim())
+        .filter(Boolean)
+        .map(s => s.split(","))
+        .map(a => [parseFloat(a[0]), parseFloat(a[1])])
+        .filter(([lng,lat]) => Number.isFinite(lng) && Number.isFinite(lat));
+
+      if (ring.length < 3) continue;
+
+      for (const [lng,lat] of ring){
+        if (lng < minLng) minLng = lng;
+        if (lng > maxLng) maxLng = lng;
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+      }
+
+      piq.push({ id: uid(), name, coordinates: [ ring ] });
+    }
+
+    const width = (maxLng - minLng) || 1e-9;
+    const height = (maxLat - minLat) || 1e-9;
+
+    const bounds = (Number.isFinite(minLng) && Number.isFinite(maxLng) && Number.isFinite(minLat) && Number.isFinite(maxLat))
+      ? { minLng, maxLng, minLat, maxLat, width, height }
+      : null;
+
+    return { piq, bounds };
+  };
+
+  const calcBoundsFromPiq = (piq) => {
+    // Fallback se bounds sumirem (ex.: payload antigo no localStorage)
+    let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+    for (const p of (piq||[])) {
+      for (const ring of (p.coordinates||[])) {
+        for (const c of (ring||[])) {
+          const lng = +c[0], lat = +c[1];
+          if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
+          if (lng < minLng) minLng = lng;
+          if (lng > maxLng) maxLng = lng;
+          if (lat < minLat) minLat = lat;
+          if (lat > maxLat) maxLat = lat;
+        }
+      }
+    }
+    if (!Number.isFinite(minLng) || !Number.isFinite(maxLng) || !Number.isFinite(minLat) || !Number.isFinite(maxLat)) return null;
+    const width = (maxLng - minLng) || 1e-9;
+    const height = (maxLat - minLat) || 1e-9;
+    return { minLng, maxLng, minLat, maxLat, width, height };
+  };
+
+  const projC = (lng,lat,b) => {
+    if (!b) return [0,0];
+    const x = ((lng - b.minLng) / b.width) * 1000;
+    const y = (1 - (lat - b.minLat) / b.height) * 800;
+    return [x,y];
+  };
+
+  const getPath = (rings, b) => {
+    if (!b || !Array.isArray(rings) || !rings.length) return "";
+    const ring = rings[0];
+    if (!ring || ring.length < 2) return "";
+    let d = "";
+    ring.forEach((c, i) => {
+      const [x,y] = projC(c[0], c[1], b);
+      d += (i===0 ? `M ${x} ${y}` : ` L ${x} ${y}`);
+    });
+    d += " Z";
+    return d;
+  };
+
+  // ---- App ----
+  function App(){
+    const [data, setData] = useState(() => {
+      try{
+        const raw = localStorage.getItem('pastureSystem');
+        if (raw) return JSON.parse(raw);
+      }catch(e){}
+      return {
+        farm: "",
+        city: "",
+        piq: [],   // piquetes do KML
+        mb: null,  // bounds do mapa
+        lots: [],  // lotes
+        notes: "", // anotações
+      };
+    });
+
+    const [ui, setUI] = useState({
+      tab: "mapa",
+      selectedPiqId: null,
+      selectedLotId: null,
+      modal: null
+    });
+
+    // Persistência
     useEffect(() => {
-        const s = localStorage.getItem('PastoVerde_v29_Core');
-        if (s) setData(JSON.parse(s));
-    }, []);
-
-    useEffect(() => {
-        localStorage.setItem('PastoVerde_v29_Core', JSON.stringify(data));
+      localStorage.setItem('pastureSystem', JSON.stringify(data));
     }, [data]);
 
+    // Repara bounds ausente (ex.: dados antigos no localStorage)
     useEffect(() => {
-        if (!navigator.geolocation) return;
-        navigator.geolocation.watchPosition(p => setGps({ pos: { lat: p.coords.latitude, lng: p.coords.longitude } }), null, { enableHighAccuracy: true });
-    }, []);
+      if (!data.mb && Array.isArray(data.piq) && data.piq.length) {
+        const b = calcBoundsFromPiq(data.piq);
+        if (b) setData(prev => ({ ...prev, mb: b }));
+      }
+    }, [data.mb, data.piq]);
 
-    const proj = (lng, lat) => {
-        if (!data.mb) return [0, 0];
-        return [((lng - data.mb.minLng) / data.mb.width) * 800 + 100, ((data.mb.maxLat - lat) / data.mb.height) * 600 + 100];
+    const svgRef = useRef(null);
+
+    const piqF = useMemo(() => data.piq || [], [data.piq]);
+
+    const selectedPiq = useMemo(
+      () => piqF.find(p => p.id === ui.selectedPiqId) || null,
+      [piqF, ui.selectedPiqId]
+    );
+
+    const lots = useMemo(() => data.lots || [], [data.lots]);
+    const selectedLot = useMemo(
+      () => lots.find(l => l.id === ui.selectedLotId) || null,
+      [lots, ui.selectedLotId, data.lots]
+    );
+
+    const totalAreaHa = useMemo(() => {
+      let sum = 0;
+      for (const p of piqF){
+        const ring = p.coordinates?.[0] || [];
+        const m2 = polygonAreaMeters2(ring);
+        sum += (m2 / 10000);
+      }
+      return sum;
+    }, [piqF]);
+
+    const hKML = e => {
+      const file = e?.target?.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = ev => {
+        try{
+          const txt = String(ev.target.result || "");
+          const { piq, bounds } = parseKML(txt);
+
+          if (!piq.length) {
+            alert("Nao consegui ler o KML (nenhum poligono encontrado). Confirme se o arquivo tem poligonos e coordenadas.");
+            return;
+          }
+
+          setData(prev => ({
+            ...prev,
+            piq,
+            mb: bounds || calcBoundsFromPiq(piq) || prev.mb,
+          }));
+        }catch(err){
+          console.error(err);
+          alert("Erro ao ler o KML. Se for KMZ, extraia para KML e tente novamente.");
+        }
+      };
+      reader.readAsText(file);
     };
 
-    // --- AÇÕES DE MANEJO (RESTAURADAS) ---
-    const moverLote = (loteId, novoPiqueteId) => {
-        const hist = { id: gid(), loteId, de: data.lot.find(l => l.id === loteId).piqueteId, para: novoPiqueteId, data: new Date().toISOString() };
-        setData({
-            ...data,
-            lot: data.lot.map(l => l.id === loteId ? { ...l, piqueteId: novoPiqueteId } : l),
-            his: [...data.his, hist]
-        });
-        setUi({ ...ui, modal: null, st: '✅ Movimentação Realizada!' });
+    const addLot = () => {
+      const id = uid();
+      setData(prev => ({
+        ...prev,
+        lots: [
+          ...(prev.lots||[]),
+          {
+            id,
+            name: `Lote ${((prev.lots||[]).length)+1}`,
+            heads: "",
+            entryDate: "",
+            exitDate: "",
+            gmd: "",
+            notes: "",
+            piquetes: [] // ids dos piquetes
+          }
+        ]
+      }));
+      setUI(prev => ({...prev, tab:"lotes", selectedLotId: id}));
     };
 
-    const addLote = () => {
-        if (!ui.fd.nome) return;
-        const nL = { id: gid(), fazendaId: data.fa, nome: ui.fd.nome, qtd: Number(ui.fd.qtd), peso: Number(ui.fd.peso), piqueteId: ui.fd.piqueteId, dataEntrada: new Date().toISOString() };
-        setData({ ...data, lot: [...data.lot, nL] });
-        setUi({ ...ui, modal: null, fd: {} });
+    const updLot = (id, patch) => {
+      setData(prev => ({
+        ...prev,
+        lots: (prev.lots||[]).map(l => l.id===id ? ({...l, ...patch}) : l)
+      }));
     };
 
-    const piqF = data.piq.filter(p => p.fazendaId === data.fa);
-    const lotF = data.lot.filter(l => l.fazendaId === data.fa);
-    const fazAt = data.faz.find(f => f.id === data.fa);
+    const delLot = (id) => {
+      if (!confirm("Excluir este lote?")) return;
+      setData(prev => ({...prev, lots: (prev.lots||[]).filter(l => l.id!==id)}));
+      setUI(prev => ({...prev, selectedLotId: prev.selectedLotId===id ? null : prev.selectedLotId}));
+    };
+
+    const toggleLotPiq = (lotId, piqId) => {
+      setData(prev => ({
+        ...prev,
+        lots: (prev.lots||[]).map(l => {
+          if (l.id !== lotId) return l;
+          const set = new Set(l.piquetes||[]);
+          if (set.has(piqId)) set.delete(piqId); else set.add(piqId);
+          return { ...l, piquetes: Array.from(set) };
+        })
+      }));
+    };
+
+    const lotAreaHa = (lot) => {
+      const set = new Set(lot.piquetes||[]);
+      let sum = 0;
+      for (const p of piqF){
+        if (!set.has(p.id)) continue;
+        const ring = p.coordinates?.[0] || [];
+        const m2 = polygonAreaMeters2(ring);
+        sum += (m2 / 10000);
+      }
+      return sum;
+    };
+
+    const onPickPiq = (id) => {
+      setUI(prev => ({...prev, selectedPiqId: id}));
+    };
 
     return (
-        <div className="min-h-screen flex flex-col">
-            <header className="glass-header text-white p-4 flex justify-between items-center shadow-lg">
-                <span className="font-black italic">PASTO VERDE <span className="text-emerald-400">PRO</span></span>
-                {data.fa && <button onClick={() => setData({...data, fa: null})} className="text-[10px] font-bold bg-white/10 px-3 py-1 rounded-full uppercase border border-white/20">{fazAt?.nome} ▾</button>}
-            </header>
+      React.createElement("div", {className:"min-h-screen"},
+        React.createElement("header", {className:"sticky top-0 z-10 bg-white border-b border-slate-200"},
+          React.createElement("div", {className:"max-w-6xl mx-auto px-4 py-3 flex flex-col gap-2"},
+            React.createElement("div", {className:"flex items-center justify-between gap-3"},
+              React.createElement("div", null,
+                React.createElement("div", {className:"text-lg font-bold text-slate-900"}, "Manager Pro v2.9.0"),
+                React.createElement("div", {className:"text-xs text-slate-500"}, "Gestao de Pastagem (offline)")
+              ),
+              React.createElement("div", {className:"flex items-center gap-2"},
+                React.createElement("label", {className:"text-xs font-medium text-slate-700"},
+                  "KML: ",
+                  React.createElement("input", {type:"file", accept:".kml,application/vnd.google-earth.kml+xml", onChange:hKML, className:"text-xs"})
+                )
+              )
+            ),
 
-            {!data.fa ? (
-                <div className="p-8 max-w-md mx-auto w-full">
-                    <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl">
-                        <h2 className="font-black mb-6 text-center text-slate-800">MINHAS FAZENDAS</h2>
-                        {data.faz.map(f => (
-                            <button key={f.id} onClick={() => setData({...data, fa: f.id})} className="w-full p-5 mb-3 border-2 rounded-2xl font-black text-slate-700 hover:border-emerald-500 hover:bg-emerald-50 transition-all text-left flex justify-between">
-                                {f.nome} <span className="text-emerald-500">→</span>
-                            </button>
-                        ))}
-                        <div className="mt-8 pt-6 border-t border-slate-100">
-                            <input className="w-full p-4 bg-slate-50 rounded-xl mb-3 outline-none focus:ring-2 ring-emerald-500" placeholder="Nome da Nova Propriedade" onChange={e => setUi({...ui, fd: {nome: e.target.value}})} />
-                            <button onClick={() => { if(ui.fd.nome){ const id=gid(); setData({...data, faz: [...data.faz, {id, nome: ui.fd.nome}], fa: id}); }}} className="w-full bg-emerald-600 text-white p-4 rounded-xl font-black shadow-lg shadow-emerald-200">CADASTRAR</button>
-                        </div>
-                    </div>
-                </div>
-            ) : (
-                <>
-                    <nav className="bg-white flex overflow-x-auto border-b no-scrollbar px-2 sticky top-[60px] z-40">
-                        {['dashboard', 'mapa', 'lotes', 'piquetes', 'config'].map(t => (
-                            <button key={t} onClick={() => setUi({...ui, tab: t})} className={`px-6 py-4 text-[10px] font-black uppercase tracking-tighter whitespace-nowrap transition-all ${ui.tab === t ? 'active-tab' : 'text-slate-400'}`}>{t}</button>
-                        ))}
-                    </nav>
+            React.createElement("div", {className:"grid grid-cols-1 md:grid-cols-3 gap-2"},
+              React.createElement("input", {
+                className:"w-full rounded-lg border border-slate-300 px-3 py-2 text-sm",
+                placeholder:"Fazenda",
+                value: data.farm || "",
+                onChange: e => setData(prev => ({...prev, farm: e.target.value}))
+              }),
+              React.createElement("input", {
+                className:"w-full rounded-lg border border-slate-300 px-3 py-2 text-sm",
+                placeholder:"Cidade",
+                value: data.city || "",
+                onChange: e => setData(prev => ({...prev, city: e.target.value}))
+              }),
+              React.createElement("div", {className:"rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm flex items-center justify-between"},
+                React.createElement("span", {className:"text-slate-600"}, "Area total (KML)"),
+                React.createElement("span", {className:"font-semibold text-slate-900"}, fmt(totalAreaHa), " ha")
+              )
+            ),
 
-                    <main className="p-4 flex-1 pb-20">
-                        {ui.tab === 'dashboard' && (
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase">UA Total</p>
-                                    <p className="text-3xl font-black text-slate-800">{(lotF.reduce((s,l) => s + (l.qtd*l.peso/450), 0)).toFixed(1)}</p>
-                                </div>
-                                <div className="bg-emerald-800 p-6 rounded-3xl shadow-lg text-white">
-                                    <p className="text-[10px] font-black text-emerald-300 uppercase tracking-widest">Lotes Ativos</p>
-                                    <p className="text-3xl font-black">{lotF.length}</p>
-                                </div>
-                            </div>
-                        )}
+            React.createElement("nav", {className:"flex gap-2"},
+              ["mapa","piquetes","lotes","anotacoes"].map(t =>
+                React.createElement("button", {
+                  key:t,
+                  onClick:()=>setUI(prev=>({...prev, tab:t})),
+                  className:
+                    "px-3 py-1.5 rounded-lg text-sm border " +
+                    (ui.tab===t ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50")
+                }, t.toUpperCase())
+              )
+            )
+          )
+        ),
 
-                        {ui.tab === 'mapa' && (
-                            <div className="space-y-4">
-                                <div className="bg-slate-200 h-[65vh] rounded-[3rem] overflow-hidden border-4 border-white shadow-inner relative">
-                                    <svg viewBox="0 0 1000 800" className="w-full h-full">
-                                        <g transform={`scale(${ui.zm}) translate(${ui.pn.x} ${ui.pn.y})`}>
-                                            {piqF.map(p => {
-                                                const lotesNoPasto = lotF.filter(l => l.piqueteId === p.id);
-                                                const cor = lotesNoPasto.length > 0 ? "#fcd34d" : "#fff";
-                                                return <path key={p.id} className="piquete-path" 
-                                                    d={p.coordinates.map((c,i)=>`${i===0?'M':'L'} ${proj(c[0],c[1]).join(' ')}`).join(' ')+' Z'} 
-                                                    fill={cor} stroke="#cbd5e1" strokeWidth="2"
-                                                    onClick={() => setUi({...ui, modal: 'infoPasto', sel: p})} />;
-                                            })}
-                                            {gps.pos && <circle cx={proj(gps.pos.lng, gps.pos.lat)[0]} cy={proj(gps.pos.lng, gps.pos.lat)[1]} r="8" fill="#3b82f6" stroke="white" strokeWidth="3" />}
-                                        </g>
-                                    </svg>
-                                    <div className="absolute top-4 right-4 flex flex-col gap-2">
-                                        <button onClick={()=>setUi({...ui, zm: ui.zm+0.2})} className="bg-white w-12 h-12 rounded-2xl shadow-xl font-black text-xl">+</button>
-                                        <button onClick={()=>setUi({...ui, zm: ui.zm-0.2})} className="bg-white w-12 h-12 rounded-2xl shadow-xl font-black text-xl">-</button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+        React.createElement("main", {className:"max-w-6xl mx-auto px-4 py-4"},
+          ui.tab==="mapa" && React.createElement("div", {className:"grid grid-cols-1 lg:grid-cols-3 gap-4"},
+            React.createElement("div", {className:"lg:col-span-2 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden"},
+              React.createElement("div", {className:"px-4 py-3 border-b border-slate-200 flex items-center justify-between"},
+                React.createElement("div", {className:"font-semibold text-slate-900"}, "Mapa (KML)"),
+                React.createElement("div", {className:"text-xs text-slate-500"}, data.mb ? "OK" : "Sem bounds (vai recalcular)")
+              ),
 
-                        {ui.tab === 'lotes' && (
-                            <div className="space-y-3">
-                                <button onClick={() => setUi({...ui, modal: 'lote', fd: {}})} className="w-full bg-emerald-600 text-white p-6 rounded-[2rem] font-black shadow-lg shadow-emerald-100">+ NOVO LOTE DE ANIMAIS</button>
-                                {lotF.map(l => (
-                                    <div key={l.id} onClick={() => setUi({...ui, modal: 'infoLote', sel: l})} className="bg-white p-5 rounded-2xl shadow-sm border-l-8 border-emerald-500 flex justify-between items-center cursor-pointer">
-                                        <div>
-                                            <p className="font-black uppercase text-slate-800">{l.nome}</p>
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Local: {piqF.find(p=>p.id===l.piqueteId)?.nome || 'Sem Pasto'}</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-lg font-black text-emerald-600">{(l.qtd*l.peso/450).toFixed(1)} UA</p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </main>
-                </>
-            )}
+              React.createElement("div", {className:"p-2"},
+                React.createElement("svg", {
+                  ref: svgRef,
+                  className:"w-full h-[70vh] bg-white rounded-xl border border-slate-100",
+                  viewBox:"0 0 1000 800",
+                },
+                  piqF.map(p => {
+                    const d = getPath(p.coordinates, data.mb);
+                    const [clng, clat] = centroidLngLat(p.coordinates?.[0] || []);
+                    const [cx, cy] = projC(clng, clat, data.mb);
+                    const sel = ui.selectedPiqId === p.id;
 
-            {/* MODAL INFO PASTO (RESTAURADO) */}
-            {ui.modal === 'infoPasto' && ui.sel && (
-                <div className="fixed inset-0 modal-bg z-[100] flex items-end md:items-center justify-center">
-                    <div className="bg-white w-full max-w-md rounded-t-[3rem] md:rounded-[3rem] p-8 animate-in slide-in-from-bottom duration-300">
-                        <div className="flex justify-between items-start mb-6">
-                            <div>
-                                <h2 className="text-2xl font-black text-slate-800 uppercase">{ui.sel.nome}</h2>
-                                <p className="text-slate-400 font-bold">{ui.sel.area} Hectares</p>
-                            </div>
-                            <button onClick={()=>setUi({...ui, modal: null})} className="text-slate-300 text-2xl font-black">✕</button>
-                        </div>
-                        <div className="space-y-4">
-                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Lotes neste pasto:</h3>
-                            {lotF.filter(l => l.piqueteId === ui.sel.id).map(l => (
-                                <div key={l.id} className="p-4 bg-slate-50 rounded-2xl flex justify-between font-bold">
-                                    <span>{l.nome}</span>
-                                    <span className="text-emerald-600">{l.qtd} Cab.</span>
-                                </div>
-                            ))}
-                            <button onClick={()=>setUi({...ui, modal: null})} className="w-full bg-slate-800 text-white p-5 rounded-2xl font-black mt-4">FECHAR</button>
-                        </div>
-                    </div>
-                </div>
-            )}
+                    return React.createElement(React.Fragment, {key:p.id},
+                      React.createElement("path", {
+                        d,
+                        onClick:()=>onPickPiq(p.id),
+                        className:"cursor-pointer",
+                        fill: sel ? "rgba(16,185,129,.30)" : "rgba(16,185,129,.18)",
+                        stroke: sel ? "rgba(5,150,105,1)" : "rgba(15,23,42,.25)",
+                        strokeWidth: sel ? 2 : 1
+                      }),
+                      React.createElement("text", {
+                        x: cx, y: cy,
+                        textAnchor:"middle",
+                        className:"select-none",
+                        style:{ fontSize: 12, fill:"rgba(15,23,42,.75)" }
+                      }, p.name)
+                    );
+                  })
+                )
+              )
+            ),
 
-            {/* MODAL INFO LOTE / TROCA DE PASTO (RESTAURADO) */}
-            {ui.modal === 'infoLote' && ui.sel && (
-                <div className="fixed inset-0 modal-bg z-[100] flex items-center justify-center p-4">
-                    <div className="bg-white w-full max-w-md rounded-[3rem] p-8 shadow-2xl">
-                        <h2 className="text-2xl font-black mb-2 uppercase">{ui.sel.nome}</h2>
-                        <p className="text-slate-400 font-bold mb-6">Manejo de Rebanho</p>
-                        
-                        <div className="space-y-4">
-                            <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 flex justify-between">
-                                <span className="font-bold text-emerald-800 text-xs">Pasto Atual:</span>
-                                <span className="font-black text-emerald-600">{piqF.find(p=>p.id===ui.sel.piqueteId)?.nome || 'Nenhum'}</span>
-                            </div>
-                            
-                            <label className="block text-[10px] font-black text-slate-400 uppercase">Mudar para outro pasto:</label>
-                            <select className="w-full p-4 bg-slate-100 rounded-xl outline-none font-bold" onChange={(e) => moverLote(ui.sel.id, e.target.value)}>
-                                <option value="">Selecionar destino...</option>
-                                {piqF.map(p => <option key={p.id} value={p.id}>{p.nome} ({p.area} ha)</option>)}
-                            </select>
+            React.createElement("div", {className:"rounded-2xl border border-slate-200 bg-white shadow-sm"},
+              React.createElement("div", {className:"px-4 py-3 border-b border-slate-200"},
+                React.createElement("div", {className:"font-semibold text-slate-900"}, "Detalhes")
+              ),
 
-                            <button onClick={() => { if(confirm('Excluir lote?')){ setData({...data, lot: data.lot.filter(l=>l.id!==ui.sel.id)}); setUi({...ui, modal: null}); }}} className="w-full p-4 text-red-400 font-black text-xs uppercase mt-4">Excluir Lote</button>
-                            <button onClick={()=>setUi({...ui, modal: null})} className="w-full p-4 text-slate-400 font-bold">VOLTAR</button>
-                        </div>
-                    </div>
-                </div>
-            )}
+              React.createElement("div", {className:"p-4 space-y-3"},
+                !selectedPiq && React.createElement("div", {className:"text-sm text-slate-600"},
+                  "Clique em um piquete no mapa para ver detalhes."
+                ),
 
-            {/* MODAL NOVO LOTE (FUNCIONAL) */}
-            {ui.modal === 'lote' && (
-                <div className="fixed inset-0 modal-bg z-[100] flex items-center justify-center p-6">
-                    <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8">
-                        <h2 className="font-black text-xl mb-4 text-center">NOVO REBANHO</h2>
-                        <input className="w-full p-4 bg-slate-100 rounded-xl mb-3 font-bold" placeholder="Nome do Lote" onChange={e=>setUi({...ui, fd: {...ui.fd, nome: e.target.value}})} />
-                        <div className="flex gap-2 mb-3">
-                            <input type="number" className="w-1/2 p-4 bg-slate-100 rounded-xl font-bold" placeholder="Quantidade" onChange={e=>setUi({...ui, fd: {...ui.fd, qtd: e.target.value}})} />
-                            <input type="number" className="w-1/2 p-4 bg-slate-100 rounded-xl font-bold" placeholder="Peso Médio" onChange={e=>setUi({...ui, fd: {...ui.fd, peso: e.target.value}})} />
-                        </div>
-                        <select className="w-full p-4 bg-slate-100 rounded-xl mb-6 font-bold" onChange={e=>setUi({...ui, fd: {...ui.fd, piqueteId: e.target.value}})}>
-                            <option value="">Entrada no Piquete...</option>
-                            {piqF.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-                        </select>
-                        <button onClick={addLote} className="w-full bg-emerald-600 text-white p-5 rounded-2xl font-black shadow-lg">SALVAR ENTRADA</button>
-                    </div>
-                </div>
-            )}
-        </div>
+                selectedPiq && (() => {
+                  const ring = selectedPiq.coordinates?.[0] || [];
+                  const areaHa = polygonAreaMeters2(ring)/10000;
+                  return React.createElement("div", {className:"space-y-2"},
+                    React.createElement("div", {className:"text-sm"},
+                      React.createElement("div", {className:"font-semibold text-slate-900"}, selectedPiq.name),
+                      React.createElement("div", {className:"text-slate-600"}, "Area: ", React.createElement("span",{className:"font-semibold text-slate-900"}, fmt(areaHa)), " ha")
+                    ),
+                    React.createElement("div", {className:"text-xs text-slate-500"},
+                      "Dica: use a aba LOTES para vincular piquetes a lotes."
+                    )
+                  );
+                })()
+              )
+            )
+          ),
+
+          ui.tab==="piquetes" && React.createElement("div", {className:"rounded-2xl border border-slate-200 bg-white shadow-sm"},
+            React.createElement("div", {className:"px-4 py-3 border-b border-slate-200 flex items-center justify-between"},
+              React.createElement("div", {className:"font-semibold text-slate-900"}, "Piquetes"),
+              React.createElement("div", {className:"text-sm text-slate-600"}, "Total: ", piqF.length)
+            ),
+            React.createElement("div", {className:"p-4 overflow-auto"},
+              React.createElement("table", {className:"w-full text-sm"},
+                React.createElement("thead", {className:"text-xs text-slate-500"},
+                  React.createElement("tr", null,
+                    React.createElement("th", {className:"text-left py-2"}, "Piquete"),
+                    React.createElement("th", {className:"text-right py-2"}, "Area (ha)")
+                  )
+                ),
+                React.createElement("tbody", null,
+                  piqF.map(p => {
+                    const ring = p.coordinates?.[0] || [];
+                    const areaHa = polygonAreaMeters2(ring)/10000;
+                    return React.createElement("tr", {key:p.id, className:"border-t border-slate-100 hover:bg-slate-50"},
+                      React.createElement("td", {
+                        className:"py-2",
+                        onClick:()=>setUI(prev=>({...prev, tab:"mapa", selectedPiqId:p.id})),
+                        style:{cursor:"pointer"}
+                      }, p.name),
+                      React.createElement("td", {className:"py-2 text-right"}, fmt(areaHa))
+                    );
+                  })
+                )
+              )
+            )
+          ),
+
+          ui.tab==="lotes" && React.createElement("div", {className:"grid grid-cols-1 lg:grid-cols-3 gap-4"},
+            React.createElement("div", {className:"rounded-2xl border border-slate-200 bg-white shadow-sm"},
+              React.createElement("div", {className:"px-4 py-3 border-b border-slate-200 flex items-center justify-between"},
+                React.createElement("div", {className:"font-semibold text-slate-900"}, "Lotes"),
+                React.createElement("button", {
+                  onClick:addLot,
+                  className:"px-3 py-1.5 rounded-lg text-sm bg-emerald-600 text-white hover:bg-emerald-700"
+                }, "+ Novo")
+              ),
+              React.createElement("div", {className:"p-2"},
+                lots.length===0 && React.createElement("div", {className:"p-3 text-sm text-slate-600"}, "Nenhum lote cadastrado."),
+                lots.map(l => {
+                  const sel = ui.selectedLotId === l.id;
+                  const areaHa = lotAreaHa(l);
+                  return React.createElement("button", {
+                    key:l.id,
+                    onClick:()=>setUI(prev=>({...prev, selectedLotId:l.id})),
+                    className:
+                      "w-full text-left p-3 rounded-xl border mb-2 " +
+                      (sel ? "border-emerald-600 bg-emerald-50" : "border-slate-200 hover:bg-slate-50")
+                  },
+                    React.createElement("div", {className:"font-semibold text-slate-900"}, l.name),
+                    React.createElement("div", {className:"text-xs text-slate-600 mt-1"},
+                      "Cabecas: ", (l.heads||"-"), " | Area: ", fmt(areaHa), " ha | Piquetes: ", (l.piquetes||[]).length
+                    )
+                  );
+                })
+              )
+            ),
+
+            React.createElement("div", {className:"lg:col-span-2 rounded-2xl border border-slate-200 bg-white shadow-sm"},
+              React.createElement("div", {className:"px-4 py-3 border-b border-slate-200 flex items-center justify-between"},
+                React.createElement("div", {className:"font-semibold text-slate-900"}, "Detalhes do Lote"),
+                selectedLot && React.createElement("div", {className:"flex gap-2"},
+                  React.createElement("button", {
+                    onClick:()=>delLot(selectedLot.id),
+                    className:"px-3 py-1.5 rounded-lg text-sm bg-rose-600 text-white hover:bg-rose-700"
+                  }, "Excluir")
+                )
+              ),
+
+              !selectedLot && React.createElement("div", {className:"p-4 text-sm text-slate-600"},
+                "Selecione um lote na lista ou crie um novo."
+              ),
+
+              selectedLot && React.createElement("div", {className:"p-4 space-y-4"},
+                React.createElement("div", {className:"grid grid-cols-1 md:grid-cols-2 gap-3"},
+                  React.createElement("div", null,
+                    React.createElement("label", {className:"block text-xs text-slate-600 mb-1"}, "Nome"),
+                    React.createElement("input", {
+                      className:"w-full rounded-lg border border-slate-300 px-3 py-2 text-sm",
+                      value: selectedLot.name || "",
+                      onChange:e=>updLot(selectedLot.id, {name:e.target.value})
+                    })
+                  ),
+                  React.createElement("div", null,
+                    React.createElement("label", {className:"block text-xs text-slate-600 mb-1"}, "Cabecas"),
+                    React.createElement("input", {
+                      className:"w-full rounded-lg border border-slate-300 px-3 py-2 text-sm",
+                      value: selectedLot.heads || "",
+                      onChange:e=>updLot(selectedLot.id, {heads:e.target.value})
+                    })
+                  ),
+                  React.createElement("div", null,
+                    React.createElement("label", {className:"block text-xs text-slate-600 mb-1"}, "Entrada"),
+                    React.createElement("input", {
+                      type:"date",
+                      className:"w-full rounded-lg border border-slate-300 px-3 py-2 text-sm",
+                      value: selectedLot.entryDate || "",
+                      onChange:e=>updLot(selectedLot.id, {entryDate:e.target.value})
+                    })
+                  ),
+                  React.createElement("div", null,
+                    React.createElement("label", {className:"block text-xs text-slate-600 mb-1"}, "Saida"),
+                    React.createElement("input", {
+                      type:"date",
+                      className:"w-full rounded-lg border border-slate-300 px-3 py-2 text-sm",
+                      value: selectedLot.exitDate || "",
+                      onChange:e=>updLot(selectedLot.id, {exitDate:e.target.value})
+                    })
+                  ),
+                  React.createElement("div", null,
+                    React.createElement("label", {className:"block text-xs text-slate-600 mb-1"}, "GMD (kg/dia)"),
+                    React.createElement("input", {
+                      className:"w-full rounded-lg border border-slate-300 px-3 py-2 text-sm",
+                      value: selectedLot.gmd || "",
+                      onChange:e=>updLot(selectedLot.id, {gmd:e.target.value})
+                    })
+                  )
+                ),
+
+                React.createElement("div", null,
+                  React.createElement("label", {className:"block text-xs text-slate-600 mb-1"}, "Observacoes"),
+                  React.createElement("textarea", {
+                    className:"w-full rounded-lg border border-slate-300 px-3 py-2 text-sm min-h-[90px]",
+                    value: selectedLot.notes || "",
+                    onChange:e=>updLot(selectedLot.id, {notes:e.target.value})
+                  })
+                ),
+
+                React.createElement("div", {className:"rounded-xl border border-slate-200"},
+                  React.createElement("div", {className:"px-3 py-2 border-b border-slate-200 flex items-center justify-between"},
+                    React.createElement("div", {className:"font-semibold text-slate-900 text-sm"}, "Piquetes do lote"),
+                    React.createElement("div", {className:"text-xs text-slate-600"},
+                      "Area do lote: ",
+                      React.createElement("span",{className:"font-semibold text-slate-900"}, fmt(lotAreaHa(selectedLot))),
+                      " ha"
+                    )
+                  ),
+                  React.createElement("div", {className:"p-3 grid grid-cols-1 md:grid-cols-2 gap-2"},
+                    piqF.map(p => {
+                      const checked = (selectedLot.piquetes||[]).includes(p.id);
+                      return React.createElement("label", {key:p.id, className:"flex items-center gap-2 text-sm"},
+                        React.createElement("input", {
+                          type:"checkbox",
+                          checked,
+                          onChange:()=>toggleLotPiq(selectedLot.id, p.id)
+                        }),
+                        React.createElement("span", {className:"text-slate-800"}, p.name)
+                      );
+                    })
+                  )
+                )
+              )
+            )
+          ),
+
+          ui.tab==="anotacoes" && React.createElement("div", {className:"rounded-2xl border border-slate-200 bg-white shadow-sm"},
+            React.createElement("div", {className:"px-4 py-3 border-b border-slate-200"},
+              React.createElement("div", {className:"font-semibold text-slate-900"}, "Anotacoes gerais")
+            ),
+            React.createElement("div", {className:"p-4"},
+              React.createElement("textarea", {
+                className:"w-full rounded-xl border border-slate-300 px-3 py-3 text-sm min-h-[260px]",
+                value: data.notes || "",
+                onChange: e => setData(prev => ({...prev, notes: e.target.value}))
+              })
+            )
+          )
+        )
+      )
     );
-}
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App />);
-    </script>
+  }
+
+  const root = ReactDOM.createRoot(document.getElementById('root'));
+  root.render(React.createElement(App));
+  </script>
 </body>
 </html>
